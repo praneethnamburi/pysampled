@@ -510,9 +510,54 @@ def test_diff(white_noise):
     assert diffed._sig.shape == (1000,)
 
 
-def test_magnitude(accelerometer):
-    magnitude = accelerometer.magnitude()
-    assert magnitude._sig.shape == (1000,)
+def test_magnitude_per_signal_name_on_data_2d(data_2d):
+    """1.2.0 behavior change: magnitude is per-signal_name. For data_2d with
+    names=['acc1','acc2'] coords=['x','y','z'], output is (1000, 2) — the
+    L2 norm across each signal's three coords."""
+    out = data_2d.magnitude()
+    assert out._sig.shape == (1000, 2)
+    assert out.signal_names == ["acc1", "acc2"]
+    assert out.signal_coords == ["mag"]
+    assert np.allclose(out()[:, 0], np.linalg.norm(data_2d()[:, :3], axis=1))
+    assert np.allclose(out()[:, 1], np.linalg.norm(data_2d()[:, 3:], axis=1))
+
+
+def test_magnitude_propagates_meta_history():
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    out = parent.magnitude()
+    assert out.meta.get("k") == "v"
+    assert any(h[0] == "magnitude" for h in out._history)
+
+
+def test_magnitude_1d_returns_self(data_1d):
+    assert data_1d.magnitude() is data_1d
+
+
+def test_magnitude_single_signal(data_2d):
+    """A subset that's still a 'single multi-axis signal' (one name, all
+    coords) collapses to a single magnitude column."""
+    out = data_2d["acc1"].magnitude()
+    assert out._sig.shape == (1000, 1)
+    assert out.signal_names == ["acc1"]
+    assert out.signal_coords == ["mag"]
+    assert np.allclose(out()[:, 0], np.linalg.norm(data_2d()[:, :3], axis=1))
+
+
+def test_magnitude_on_accelerometer(accelerometer):
+    """The `generate_signal('accelerometer')` fixture defaults to three
+    1-coord signals (`signal_names=['s0','s1','s2']`, `signal_coords=['x']`).
+    Under the per-signal-name rule, magnitude becomes |x| per signal — a
+    no-op besides taking absolute value. Pin this so the unusual case is
+    surfaced if a user runs into it."""
+    out = accelerometer.magnitude()
+    assert out._sig.shape == (1000, 3)
+    assert out.signal_coords == ["mag"]
 
 
 def test_apply(white_noise, accelerometer):

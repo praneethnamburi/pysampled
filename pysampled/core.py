@@ -1630,26 +1630,32 @@ class Data:
         )
 
     def magnitude(self) -> "Data":
-        """Compute the magnitude of a multi-dimensional signal.
+        """Compute the magnitude of a multi-axis signal *per signal_name*.
 
-        This method computes the Euclidean norm (magnitude) along the non-time
-        axis. It is particularly useful for multi-axis signals, such as 3-axis
-        accelerometer data. For 1D signals, the function returns the signal
-        unchanged.
+        For each name in :py:attr:`signal_names`, takes the L2 norm across
+        that name's :py:attr:`signal_coords`. The output has shape
+        ``(n_samples, len(signal_names))`` (or its transpose), with
+        :py:attr:`signal_names` preserved and :py:attr:`signal_coords` set to
+        ``["mag"]``. For 1D signals, returns ``self`` unchanged.
 
-        Returns:
-            Data: A new `Data` object containing the magnitude of the signal.
+        Behavior change in 1.2.0: previously this method computed a single
+        global L2 norm across **all** non-time columns, regardless of how
+        the signals were grouped by name. Callers relying on the old
+        behavior can recover it with
+        ``sig.apply_along_signals(np.linalg.norm)``.
         """
         if self._sig.ndim == 1:
-            # magnitude does not make sense for a 1D signal (in that case, use np.linalg.norm directly)
             return self
         assert self._sig.ndim == 2
-        return Data(
-            np.linalg.norm(self._sig, axis=(self.axis + 1) % 2),
-            self.sr,
-            history=self._history + [("magnitude", "None")],
-            t0=self._t0,
-            meta=self.meta,
+        per_name = [
+            np.linalg.norm(self[name]._sig, axis=self.get_signal_axis())
+            for name in self.signal_names
+        ]
+        proc_sig = np.stack(per_name, axis=self.get_signal_axis())
+        return self._clone(
+            proc_sig,
+            ("magnitude", None),
+            signal_coords=["mag"],
         )
 
     @staticmethod
@@ -1948,8 +1954,13 @@ class Data:
         jerk = vel.apply_to_each_signal(np.gradient, dt).apply_to_each_signal(
             np.gradient, dt
         )
+        # Use the global L2 across all non-time columns (the pre-1.2.0
+        # `magnitude()` semantics) — for a 3-axis velocity signal this is the
+        # speed magnitude per timestep, regardless of how the columns are
+        # labelled by signal_name vs. signal_coord.
+        speed_mag = np.linalg.norm(jerk(), axis=jerk.get_signal_axis())
         return -np.log(
-            scale * scipy.integrate.simpson(np.power(jerk.magnitude()(), 2), dx=dt)
+            scale * scipy.integrate.simpson(np.power(speed_mag, 2), dx=dt)
         )
 
     def logdj2(self, interpnan_maxgap: Optional[int] = None) -> float:
