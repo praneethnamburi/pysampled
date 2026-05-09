@@ -680,62 +680,6 @@ def test_split_by_signal_coord_1d_returns_self(data_1d):
     assert parts == [data_1d]
 
 
-def test_merge_along_signal_name_round_trips_split(data_2d):
-    merged = Data.merge_along_signal_name(data_2d.split_by_signal_name())
-    assert np.allclose(merged(), data_2d())
-    assert merged.signal_names == data_2d.signal_names
-    assert merged.signal_coords == data_2d.signal_coords
-    assert merged.sr == data_2d.sr
-    assert merged._t0 == data_2d._t0
-
-
-def test_merge_along_signal_coord_round_trips_split(data_2d):
-    merged = Data.merge_along_signal_coord(data_2d.split_by_signal_coord())
-    assert np.allclose(merged(), data_2d())
-    assert merged.signal_names == data_2d.signal_names
-    assert merged.signal_coords == data_2d.signal_coords
-
-
-def test_merge_along_time_round_trips_split():
-    parent = Data(
-        np.random.random((1000, 6)),
-        sr=100,
-        signal_names=["acc1", "acc2"],
-        signal_coords=["x", "y", "z"],
-    )
-    # Use sample-based slicing for a clean (non-overlapping) split — float
-    # slicing is inclusive on both ends and overlaps by one sample at the
-    # boundary, which the merge contiguity check correctly rejects.
-    first_half = parent[:500]
-    second_half = parent[500:]
-    merged = Data.merge_along_time([first_half, second_half])
-    assert merged._sig.shape == parent._sig.shape
-    assert np.allclose(merged(), parent())
-    assert merged.signal_names == parent.signal_names
-    assert merged.signal_coords == parent.signal_coords
-
-
-def test_merge_along_signal_name_rejects_coord_mismatch():
-    a = Data(np.zeros((100, 3)), sr=10, signal_names=["a"], signal_coords=["x", "y", "z"])
-    b = Data(np.zeros((100, 2)), sr=10, signal_names=["b"], signal_coords=["x", "y"])
-    with pytest.raises(ValueError, match="signal_coords"):
-        Data.merge_along_signal_name([a, b])
-
-
-def test_merge_along_signal_name_rejects_sr_mismatch():
-    a = Data(np.zeros((100, 3)), sr=10, signal_names=["a"], signal_coords=["x", "y", "z"])
-    b = Data(np.zeros((100, 3)), sr=20, signal_names=["b"], signal_coords=["x", "y", "z"])
-    with pytest.raises(ValueError, match="sr"):
-        Data.merge_along_signal_name([a, b])
-
-
-def test_merge_along_time_rejects_gap():
-    a = Data(np.zeros(100), sr=10)
-    b = Data(np.zeros(100), sr=10, t0=20.0)  # leaves a gap after a (ends ~9.9)
-    with pytest.raises(ValueError, match="contiguous"):
-        Data.merge_along_time([a, b])
-
-
 def test_transpose_preserves_labels(data_2d):
     """Pin the documented contract: transpose preserves signal_names and
     signal_coords because they describe the logical signal axis,
@@ -764,16 +708,6 @@ def test_pipeline_apply_running_win_then_magnitude(data_2d):
     assert any(h[0] == "magnitude" for h in out._history)
 
 
-def test_pipeline_split_then_merge_round_trip(data_2d):
-    """split_by_signal_name then merge_along_signal_name reconstructs the
-    parent's data and labels. Verifies the two halves of the new feature
-    pair compose correctly end-to-end."""
-    parts = data_2d.split_by_signal_name()
-    assert len(parts) == 2
-    rebuilt = Data.merge_along_signal_name(parts)
-    assert np.allclose(rebuilt(), data_2d())
-    assert rebuilt.signal_names == data_2d.signal_names
-    assert rebuilt.signal_coords == data_2d.signal_coords
 
 def test_apply_along_signals(accelerometer):
     applied = accelerometer.apply_along_signals(np.mean)

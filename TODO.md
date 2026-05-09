@@ -34,12 +34,9 @@ Internal cleanup release; nine commits on top of 1.1.3.
   shape-changing func no longer raises `AssertionError`.
 - **`split_by_signal_name` / `split_by_signal_coord` (`10b2485`).**
   Coarser-grained companions to `split_to_1d`. Thin wrappers over
-  `__getitem__`.
-- **`merge_along_signal_name` / `_signal_coord` / `_time` (`33a326d`).**
-  Three classmethods complementing the splits. Validate sr / axis /
-  non-merged labels equality, and contiguity within `1 / sr` for the
-  time merge. Dunder shorthand (`s1 + s2` etc.) deliberately
-  deferred — see below.
+  `__getitem__`. Matching `merge_along_*` classmethods were
+  prototyped but pulled before release — see "Open design work"
+  below.
 - **`magnitude` semantic fix (`6176ced`).** Now per-`signal_name`:
   for a `Data` with `signal_names=["acc1","acc2"]` and
   `signal_coords=["x","y","z"]`, output is `(n_samples, 2)` with
@@ -53,6 +50,22 @@ Internal cleanup release; nine commits on top of 1.1.3.
   n_signals rule, and the split/merge family. Two integration tests
   exercise the rate-change × shape-change pipeline and the
   split-then-merge round trip.
+
+## Open design work
+
+- **Merge classmethods (deferred from 1.2.0).** Initial
+  `merge_along_signal_name` / `merge_along_signal_coord` /
+  `merge_along_time` prototypes were pulled before release; the
+  design needs more work before re-landing. Open questions to
+  discuss collaboratively: meta-merge collision rule (last-wins
+  was the prototype, but probably wrong); history representation
+  (the prototype's `parts_history_tails` is awkward); contiguity
+  tolerance for time merges (strict-by-default rejects float-slice
+  round trips that overlap by one sample at the boundary —
+  surprising); whether to support overlap / gap / resampling-on-merge
+  variants; whether the API should be classmethods or module-level
+  functions or instance methods. No timeline; revisit when the use
+  case is concrete.
 
 ## Suspected bugs / contract holes (1.3.0)
 
@@ -103,12 +116,13 @@ Internal cleanup release; nine commits on top of 1.1.3.
   users pick clarity over conciseness when readability matters
   more. This is the spec's Open Question #1 and pairs with the
   mixed int/float decision above.
-- **Merge dunders.** `s1 + s2` for time-axis merge, `s1 | s2` (or
-  similar) for signal-axis merge. Design risk: `Data` already
-  defines `__le__` / `__ge__` / `__eq__` / etc. for thresholding, so
-  adding `__add__` opens a real ambiguity question (concat vs
-  element-wise). Belongs alongside the rest of the user-facing API
-  contract decisions in 1.3.0.
+- **Merge dunders.** Once the `merge_along_*` classmethods land
+  (see "Open design work"), consider dunder shorthand: `s1 + s2`
+  for time-axis merge, `s1 | s2` (or similar) for signal-axis
+  merge. Design risk: `Data` already defines `__le__` / `__ge__` /
+  `__eq__` / etc. for thresholding, so adding `__add__` opens a
+  real ambiguity question (concat vs element-wise). Don't tackle
+  the dunders before the underlying merge methods are stable.
 - **xarray boundary.** Today `signal_names` / `signal_coords` cover
   the portfolio's needs. Reconsider absorbing a few more
   xarray-shaped features only if two downstream repos independently
