@@ -377,6 +377,35 @@ class Data:
             # This assumes that the 6 columns are ordered as [acc1_x, acc1_y, acc1_z, acc2_x, acc2_y, acc2_z]
             acc1_data = s["acc1"]  # Access all coordinates of acc1
             x_coord_data = s["x"]  # Access the x-coordinate of all signals
+
+    Propagation invariants (1.2.0+):
+        Every chained method either routes through :py:meth:`_clone`
+        (rate-preserving) or :py:meth:`_clone_with_rate` (rate-changing).
+        Both helpers shallow-copy `meta`, `signal_names`, `signal_coords`,
+        and `_history` so a clone never aliases the parent's mutable state.
+        The rate-changing methods are: `resample`, `apply_running_win`,
+        `fft_as_sampled`, `psd_as_sampled`, `frac_power`. Methods like
+        `diff` and `instantaneous_frequency` preserve the rate (and route
+        through `_clone`).
+
+        :py:meth:`transpose` preserves `signal_names` and `signal_coords`
+        because they describe the logical signal axis, independent of which
+        physical axis it lives on.
+
+        The `apply` family (:py:meth:`apply`, :py:meth:`apply_along_signals`,
+        :py:meth:`apply_to_each_signal`) shares one label-propagation rule:
+        labels propagate iff `n_signals(output) == n_signals(input)`. On
+        mismatch they reset to defaults. Explicit `signal_names=` /
+        `signal_coords=` always override.
+
+        The split / merge family is:
+            - :py:meth:`split_to_1d`, :py:meth:`split_by_signal_name`,
+              :py:meth:`split_by_signal_coord` — a `Data` becomes a list.
+            - :py:meth:`merge_along_signal_name`,
+              :py:meth:`merge_along_signal_coord`,
+              :py:meth:`merge_along_time` — a list becomes a `Data`. Dunder
+              shorthand (`s1 + s2` etc.) is deliberately not provided; the
+              merge classmethods are the canonical entry points.
     """
 
     def __init__(

@@ -735,6 +735,46 @@ def test_merge_along_time_rejects_gap():
     with pytest.raises(ValueError, match="contiguous"):
         Data.merge_along_time([a, b])
 
+
+def test_transpose_preserves_labels(data_2d):
+    """Pin the documented contract: transpose preserves signal_names and
+    signal_coords because they describe the logical signal axis,
+    independent of which physical axis it lives on."""
+    out = data_2d.transpose()
+    assert out.signal_names == data_2d.signal_names
+    assert out.signal_coords == data_2d.signal_coords
+    assert out.n_signals() == data_2d.n_signals()
+
+
+def test_pipeline_apply_running_win_then_magnitude(data_2d):
+    """Compose a rate-changing op (apply_running_win) with a shape-changing
+    op (magnitude) and confirm meta/labels survive the chain."""
+    parent = Data(
+        data_2d._sig,
+        sr=data_2d.sr,
+        signal_names=list(data_2d.signal_names),
+        signal_coords=list(data_2d.signal_coords),
+        meta={"k": "v"},
+    )
+    out = parent.apply_running_win(np.mean).magnitude()
+    assert out.signal_names == ["acc1", "acc2"]
+    assert out.signal_coords == ["mag"]
+    assert out.meta.get("k") == "v"
+    assert any(h[0] == "apply_running_win" for h in out._history)
+    assert any(h[0] == "magnitude" for h in out._history)
+
+
+def test_pipeline_split_then_merge_round_trip(data_2d):
+    """split_by_signal_name then merge_along_signal_name reconstructs the
+    parent's data and labels. Verifies the two halves of the new feature
+    pair compose correctly end-to-end."""
+    parts = data_2d.split_by_signal_name()
+    assert len(parts) == 2
+    rebuilt = Data.merge_along_signal_name(parts)
+    assert np.allclose(rebuilt(), data_2d())
+    assert rebuilt.signal_names == data_2d.signal_names
+    assert rebuilt.signal_coords == data_2d.signal_coords
+
 def test_apply_along_signals(accelerometer):
     applied = accelerometer.apply_along_signals(np.mean)
     assert applied._sig.shape == (1000,)
