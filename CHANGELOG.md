@@ -1,6 +1,9 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.1.2]
+Added `pysampled.Data.envelope2` while packaging the `delsys` module. This was originally written by Roger Pallares-Lopez, and kept in an inherited class to not create unintended changes in this repository. But, the time for that has passed, and Praneeth is now migrating this function here for world code peace.
+
 ## [1.1.1]
 
 ### Changed

@@ -561,6 +561,23 @@ class Data:
             assert isinstance(lowpass, (int, float))  # cutoff frequency
             return self._clone(proc_sig, ("envelope_" + type, None)).lowpass(lowpass)
         return self._clone(proc_sig, ("envelope_" + type, None))
+    
+    def envelope2(self, side='upper', lowpass=None):
+        """Maxima/minima-based envelope. Set ``side='lower'`` for the lower envelope."""
+        if side not in ('upper', 'lower'):
+            raise ValueError(f"Unsupported side {side!r}; must be 'upper' or 'lower'")
+        comp = np.greater if side == 'upper' else np.less
+        sig_2d = self._sig if self._sig.ndim == 2 else self._sig[:, None]
+        proc_columns = []
+        for col in sig_2d.T:
+            idxs = scipy.signal.argrelextrema(col, comp)[0]
+            idxs = np.concatenate(([0], idxs, [len(col) - 1]))
+            proc_columns.append(scipy.interpolate.interp1d(self.t[idxs], col[idxs], kind='linear')(self.t))
+        proc = np.array(proc_columns).T
+        if self._sig.ndim == 1:
+            proc = proc.ravel()
+        out = self._clone(proc, his_append=('envelope2_' + side, None))
+        return out.lowpass(lowpass, order=2) if lowpass else out
 
     def phase(self) -> "Data":
         """Extract the instantaneous phase is the phase of the analytic signal. It is the angle of the complex number formed by the real and imaginary parts of the analytic signal. It is useful for calculating phase-locking (synchronization) between signals."""
