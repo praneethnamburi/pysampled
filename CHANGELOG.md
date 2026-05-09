@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.2.0]
 
-In progress. The opening commits restore CI compatibility against newer numpy and scipy releases, then ship internal cleanup, the apply-variant unification, and a small split/merge feature pair.
+Internal cleanup release. Restores CI compatibility against newer numpy and scipy, ships two internal refactors that close 1.1.3 audit blind spots (`_validate()`, `_clone_with_rate`), unifies the three `apply` variants on a single label-propagation rule, fixes `magnitude`'s long-standing global-vs-per-signal-name semantic mismatch, and adds a split/merge feature pair (`split_by_signal_name` / `split_by_signal_coord` plus the three `merge_along_*` classmethods). User-facing API decisions (mixed int/float slicing, `at_time` / `at_sample`, meta-vs-name precedence, magic `signal_coords=["x"]` default, merge dunders) are held for 1.3.0.
 
 ### Added
 - `pysampled.Data.split_by_signal_name` and `pysampled.Data.split_by_signal_coord` complement the existing `split_to_1d`. They return one child `Data` per `signal_name` (or per `signal_coord`), with the corresponding labels preserved on each child. 1D signals fall through to `[self]`, matching `split_to_1d`.
