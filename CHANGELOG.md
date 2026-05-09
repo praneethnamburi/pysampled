@@ -7,6 +7,7 @@ In progress. The opening commits restore CI compatibility against newer numpy an
 
 ### Added
 - `pysampled.Data.split_by_signal_name` and `pysampled.Data.split_by_signal_coord` complement the existing `split_to_1d`. They return one child `Data` per `signal_name` (or per `signal_coord`), with the corresponding labels preserved on each child. 1D signals fall through to `[self]`, matching `split_to_1d`.
+- `pysampled.Data.merge_along_signal_name`, `pysampled.Data.merge_along_signal_coord`, and `pysampled.Data.merge_along_time` classmethods. The first two are inverses of the new splits and reconstruct one `Data` from a list of compatible parts; the third concatenates parts along the time axis and validates contiguity within `1 / sr` tolerance. All three validate that parts agree on the dimensions they are not merging over (`sr`, `axis`, the non-merged labels) and raise `ValueError` on mismatch. Note: dunder forms (`s1 + s2`, etc.) are deliberately not provided in 1.2.0; they're held for 1.3.0 alongside the rest of the user-facing API contract decisions.
 
 ### Fixed
 - `pysampled.Data.frac_power` now resolves the trapezoidal-rule helper at import time via a small shim (`np.trapezoid` on numpy 2.x, falling back to `np.trapz` on numpy 1.x). 1.1.3's CI failed on Ubuntu / macOS / Python 3.11 because numpy 2.x removed the legacy `np.trapz` symbol; the shim keeps `frac_power` working on both lineages without pinning numpy.

@@ -1210,6 +1210,161 @@ class Data:
             return 1
         return self().shape[self.get_signal_axis()]
 
+    @classmethod
+    def _check_merge_invariants(
+        cls, parts: List["Data"], require_match: List[str]
+    ) -> "Data":
+        """Shared validation for the merge_along_* classmethods. `require_match`
+        lists the attributes that must be equal across all parts. Returns
+        `parts[0]` for convenience."""
+        if not parts:
+            raise ValueError("merge requires at least one Data part")
+        head = parts[0]
+        for p in parts[1:]:
+            for attr in require_match:
+                if getattr(p, attr) != getattr(head, attr):
+                    raise ValueError(
+                        f"merge: {attr} mismatch ({getattr(p, attr)!r} vs "
+                        f"{getattr(head, attr)!r})"
+                    )
+        return head
+
+    @classmethod
+    def merge_along_signal_name(cls, parts: List["Data"]) -> "Data":
+        """Inverse of :py:meth:`split_by_signal_name`. Concatenate `parts`
+        along the signal axis, combining their `signal_names`. Each part must
+        agree on `signal_coords`, `sr`, `axis`, time length, and `t0`. `meta`
+        on the result is the chained dict-merge of each part's `meta` (later
+        parts override earlier ones on key collision)."""
+        head = cls._check_merge_invariants(
+            parts, ["sr", "axis", "signal_coords", "_t0"]
+        )
+        for p in parts[1:]:
+            if len(p) != len(head):
+                raise ValueError(f"merge: time length mismatch ({len(p)} vs {len(head)})")
+
+        signal_axis = head.get_signal_axis()
+        if signal_axis is None:
+            raise ValueError(
+                "merge_along_signal_name not defined for 1D signals"
+            )
+
+        proc_sig = np.concatenate([p._sig for p in parts], axis=signal_axis)
+        new_signal_names = list(itertools.chain.from_iterable(
+            p.signal_names for p in parts
+        ))
+        meta: dict = {}
+        for p in parts:
+            meta.update(p.meta)
+        history = [(
+            "merge_along_signal_name",
+            {"parts_history_tails": [p._history[-1] for p in parts]},
+        )]
+        return cls(
+            proc_sig,
+            sr=head.sr,
+            axis=head.axis,
+            history=history,
+            t0=head._t0,
+            meta=meta,
+            signal_names=new_signal_names,
+            signal_coords=list(head.signal_coords),
+        )
+
+    @classmethod
+    def merge_along_signal_coord(cls, parts: List["Data"]) -> "Data":
+        """Inverse of :py:meth:`split_by_signal_coord`. Concatenate `parts`
+        along the signal axis, combining their `signal_coords`. Each part must
+        agree on `signal_names`, `sr`, `axis`, time length, and `t0`. The
+        output is reordered to keep the names-outer / coords-inner column
+        invariant."""
+        head = cls._check_merge_invariants(
+            parts, ["sr", "axis", "signal_names", "_t0"]
+        )
+        for p in parts[1:]:
+            if len(p) != len(head):
+                raise ValueError(f"merge: time length mismatch ({len(p)} vs {len(head)})")
+
+        signal_axis = head.get_signal_axis()
+        if signal_axis is None:
+            raise ValueError(
+                "merge_along_signal_coord not defined for 1D signals"
+            )
+
+        new_signal_names = list(head.signal_names)
+        new_signal_coords = list(itertools.chain.from_iterable(
+            p.signal_coords for p in parts
+        ))
+
+        # Naive concat order = parts' product orders end-to-end. Target order
+        # iterates names outer, coords inner. Build the column permutation.
+        source_pairs: List[Tuple[str, str]] = []
+        for p in parts:
+            source_pairs.extend(
+                itertools.product(p.signal_names, p.signal_coords)
+            )
+        target_pairs = list(itertools.product(new_signal_names, new_signal_coords))
+        perm = np.array([source_pairs.index(pair) for pair in target_pairs])
+
+        concat = np.concatenate([p._sig for p in parts], axis=signal_axis)
+        slc: List[Any] = [slice(None)] * concat.ndim
+        slc[signal_axis] = perm
+        proc_sig = concat[tuple(slc)]
+
+        meta: dict = {}
+        for p in parts:
+            meta.update(p.meta)
+        history = [(
+            "merge_along_signal_coord",
+            {"parts_history_tails": [p._history[-1] for p in parts]},
+        )]
+        return cls(
+            proc_sig,
+            sr=head.sr,
+            axis=head.axis,
+            history=history,
+            t0=head._t0,
+            meta=meta,
+            signal_names=new_signal_names,
+            signal_coords=new_signal_coords,
+        )
+
+    @classmethod
+    def merge_along_time(cls, parts: List["Data"]) -> "Data":
+        """Concatenate `parts` along the time axis. Each part must agree on
+        `signal_names`, `signal_coords`, `sr`, and `axis`. Consecutive parts
+        must be contiguous in time within `1 / sr` tolerance — `parts[i+1]`'s
+        `t0` must equal `parts[i].t_end() + 1 / sr`."""
+        head = cls._check_merge_invariants(
+            parts, ["sr", "axis", "signal_names", "signal_coords"]
+        )
+        for prev, nxt in zip(parts, parts[1:]):
+            expected_t0 = prev.t_end() + 1.0 / head.sr
+            if abs(nxt._t0 - expected_t0) > 0.5 / head.sr:
+                raise ValueError(
+                    f"merge_along_time: parts not contiguous "
+                    f"(expected t0={expected_t0!r}, got {nxt._t0!r})"
+                )
+
+        proc_sig = np.concatenate([p._sig for p in parts], axis=head.axis)
+        meta: dict = {}
+        for p in parts:
+            meta.update(p.meta)
+        history = [(
+            "merge_along_time",
+            {"parts_history_tails": [p._history[-1] for p in parts]},
+        )]
+        return cls(
+            proc_sig,
+            sr=head.sr,
+            axis=head.axis,
+            history=history,
+            t0=head._t0,
+            meta=meta,
+            signal_names=list(head.signal_names),
+            signal_coords=list(head.signal_coords),
+        )
+
     def split_by_signal_name(self) -> List["Data"]:
         """Split into one `Data` per `signal_name`. Equivalent to
         `[self[name] for name in self.signal_names]`. For a 1D signal,
