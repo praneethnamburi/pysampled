@@ -217,6 +217,20 @@ def test_split_to_1d(accelerometer):
     assert all(s._sig.shape == (1000,) for s in split)
 
 
+def test_split_to_1d_history_shape(accelerometer):
+    """Every history entry must be a 2-tuple (name, payload). The split
+    entry's payload is a dict carrying col / signal_name / signal_coord."""
+    split = accelerometer.split_to_1d()
+    for col, s in enumerate(split):
+        assert all(len(h) == 2 for h in s._history)
+        last_name, last_payload = s._history[-1]
+        assert last_name == "split"
+        assert isinstance(last_payload, dict)
+        assert last_payload["col"] == col
+        assert last_payload["signal_name"] == s.signal_names[0]
+        assert last_payload["signal_coord"] == s.signal_coords[0]
+
+
 def test_transpose(accelerometer):
     transposed = accelerometer.transpose()
     assert transposed._sig.shape == (3, 1000)

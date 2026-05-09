@@ -1146,7 +1146,14 @@ class Data:
         return [
             self._clone(
                 self(col),
-                his_append=("split", col, (signal_name, signal_coord)),
+                his_append=(
+                    "split",
+                    {
+                        "col": col,
+                        "signal_name": signal_name,
+                        "signal_coord": signal_coord,
+                    },
+                ),
                 axis=0,
                 signal_names=[signal_name],
                 signal_coords=[signal_coord],
