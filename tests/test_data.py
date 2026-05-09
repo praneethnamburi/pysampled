@@ -249,6 +249,54 @@ def test_getitem(white_noise):
     assert white_noise[:1.5]._sig.shape == (151,)
 
 
+def test_take_by_interval_preserves_labels(data_2d):
+    """take_by_interval used to drop signal_names/signal_coords back to
+    defaults because it called the raw constructor with positional args
+    that stopped at meta."""
+    sub = data_2d.take_by_interval(data_2d.interval())
+    assert sub.signal_names == ["acc1", "acc2"]
+    assert sub.signal_coords == ["x", "y", "z"]
+
+
+def test_time_slice_preserves_labels(data_2d):
+    sub = data_2d[1.0:2.0]
+    assert sub.signal_names == ["acc1", "acc2"]
+    assert sub.signal_coords == ["x", "y", "z"]
+
+
+def test_sample_slice_preserves_labels(data_2d):
+    sub = data_2d[10:20]
+    assert sub.signal_names == ["acc1", "acc2"]
+    assert sub.signal_coords == ["x", "y", "z"]
+
+
+def test_meta_survives_time_slice():
+    """meta dict must survive a time slice."""
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    sub = parent[1.0:2.0]
+    assert sub.meta.get("k") == "v"
+
+
+def test_string_index_then_time_slice(data_2d):
+    """Composition: subset by name, then slice in time. Labels must
+    propagate through both steps."""
+    sub = data_2d["acc1"][1.0:2.0]
+    assert sub.signal_names == ["acc1"]
+    assert sub.signal_coords == ["x", "y", "z"]
+
+
+def test_take_by_interval_preserves_labels_transposed(data_2d_transposed):
+    sub = data_2d_transposed.take_by_interval(data_2d_transposed.interval())
+    assert sub.signal_names == ["acc1", "acc2"]
+    assert sub.signal_coords == ["x", "y", "z"]
+
+
 def test_apply_running_win(white_noise):
     win_inc = 0.1
     applied = white_noise.apply_running_win(np.mean, win_size=0.5, win_inc=win_inc)

@@ -866,15 +866,12 @@ class Data:
         return rng_start, rng_end
 
     def take_by_interval(self, key: Interval) -> "Data":
-        his = self._history + [("slice", key)]
         rng_start, rng_end = self._interval_to_index(key)
         proc_sig = self._sig.take(indices=range(rng_start, rng_end), axis=self.axis)
-        if hasattr(self, "meta"):
-            meta = self.meta
-        else:
-            meta = {}
-        return self.__class__(
-            proc_sig, self.sr, self.axis, his, self.t[rng_start], meta
+        return self._clone(
+            proc_sig,
+            his_append=("slice", key),
+            t0=self.t[rng_start],
         )
 
     def __getitem__(
