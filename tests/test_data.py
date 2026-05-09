@@ -1,3 +1,5 @@
+import pickle
+
 import pytest
 import numpy as np
 from pysampled import Data, Siglets, generate_signal
@@ -636,3 +638,48 @@ def test_1d_data_access(data_1d):
 
 #     pysampled.plot([s, s.smooth(0.3), s.moving_average(0.3)]) # even kernel
 #     pysampled.plot([s, s.smooth(0.4), s.moving_average(0.4)]) # odd kernel
+
+
+def test_meta_survives_multi_step_pipeline():
+    parent = Data(
+        np.random.random(2000),
+        sr=100,
+        meta={"stream_id": "abc"},
+    )
+    out = parent.bandpass(2.0, 30.0).envelope().shift_baseline()
+    assert out.meta.get("stream_id") == "abc"
+
+
+def test_setstate_old_pickle_round_trip():
+    """An old pickle (no meta, no signal_coords, no signal_names) must
+    round-trip with the documented defaults restored."""
+    parent = Data(np.zeros((100, 6)), sr=10)
+    state = parent.__dict__.copy()
+    state.pop("meta", None)
+    state.pop("signal_coords", None)
+    state.pop("signal_names", None)
+    payload = pickle.dumps(state)
+
+    restored_state = pickle.loads(payload)
+    new = Data.__new__(Data)
+    new.__setstate__(restored_state)
+    assert new.meta == {}
+    assert new.signal_coords == ["x"]
+    assert new.signal_names == [f"s{i}" for i in range(6)]
+
+
+def test_transpose_then_string_index(data_2d):
+    transposed = data_2d.transpose()
+    sub = transposed["acc1"]
+    assert sub.signal_names == ["acc1"]
+    assert sub.signal_coords == ["x", "y", "z"]
+    assert sub.n_signals() == 3
+
+
+def test_subset_then_bandpass(data_2d):
+    """Composition: subset by name and coord, then run a rate-preserving
+    filter. Labels must survive intact through the pipeline."""
+    sub = data_2d["acc1"]["x"].bandpass(2.0, 30.0)
+    assert sub.signal_names == ["acc1"]
+    assert sub.signal_coords == ["x"]
+    assert sub.n_signals() == 1
