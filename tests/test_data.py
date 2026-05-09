@@ -68,6 +68,13 @@ def test_init(white_noise, data_2d, data_2d_transposed, data_1d):
     assert data_2d.signal_coords == ["x", "y", "z"]
 
 
+def test_empty_signal_coords_rejected():
+    """Passing signal_coords=[] used to zero-divide in
+    _get_default_signal_names. Reject at the constructor instead."""
+    with pytest.raises(ValueError):
+        Data(np.zeros((100, 2)), sr=10, signal_coords=[])
+
+
 def test_call(sine_wave):
     assert sine_wave().shape == (1000,)
     assert np.allclose(

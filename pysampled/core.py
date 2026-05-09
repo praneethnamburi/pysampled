@@ -413,6 +413,11 @@ class Data:
         self.meta = meta
 
         # Signal names and coordinates (for IndexedData-like functionality)
+        if signal_coords is not None and len(signal_coords) == 0:
+            raise ValueError(
+                "signal_coords must contain at least one element; "
+                "pass None to use the default ['x']."
+            )
         self.signal_names = signal_names or []
         self.signal_coords = signal_coords or ["x"]
 
