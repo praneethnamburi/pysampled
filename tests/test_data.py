@@ -518,10 +518,84 @@ def test_magnitude(accelerometer):
 def test_apply(white_noise, accelerometer):
     applied = white_noise.apply(lambda x: x**2)
     assert applied._sig.shape == (1000,)
-    with pytest.raises(AssertionError):
-        accelerometer.apply(lambda x: np.linalg.norm(x, axis=1))
-    x1 = accelerometer.apply(lambda x: np.linalg.norm(x, axis=1), signal_names=["acc1"], signal_coords=["mag"])
-    assert np.allclose(x1, accelerometer.magnitude())
+    # Under the 1.2.0 n_signals rule, a shape-changing func no longer raises;
+    # it auto-resets labels to defaults. Pin that behavior here.
+    auto = accelerometer.apply(lambda x: np.linalg.norm(x, axis=1))
+    assert auto._sig.shape == (1000,)
+    assert auto.signal_coords == ["x"]
+    assert auto.signal_names == ["s0"]
+    x1 = accelerometer.apply(
+        lambda x: np.linalg.norm(x, axis=1),
+        signal_names=["acc1"],
+        signal_coords=["mag"],
+    )
+    assert x1.signal_names == ["acc1"]
+    assert x1.signal_coords == ["mag"]
+
+
+def test_apply_n_signals_preserved_keeps_labels(data_2d):
+    """When func returns the same number of signals, labels propagate."""
+    out = data_2d.apply(lambda x, axis: x * 2)
+    assert out.signal_names == ["acc1", "acc2"]
+    assert out.signal_coords == ["x", "y", "z"]
+
+
+def test_apply_time_length_change_keeps_labels(data_2d):
+    """A time-axis-only change does not by itself trigger a label reset.
+    Only n_signals matters."""
+    out = data_2d.apply(lambda x, axis: x[100:])
+    assert out._sig.shape[0] == data_2d._sig.shape[0] - 100
+    assert out.signal_names == ["acc1", "acc2"]
+    assert out.signal_coords == ["x", "y", "z"]
+
+
+def test_apply_n_signals_change_resets_labels(data_2d):
+    """A func that drops signals collapses to defaults rather than raising."""
+    out = data_2d.apply(lambda x, axis: x.mean(axis=1, keepdims=True))
+    assert out._sig.shape == (1000, 1)
+    assert out.signal_coords == ["x"]
+    assert out.signal_names == ["s0"]
+
+
+def test_apply_explicit_labels_win(data_2d):
+    """Explicit signal_names / signal_coords always override the n_signals
+    auto-reset."""
+    out = data_2d.apply(
+        lambda x, axis: x.mean(axis=1, keepdims=True),
+        signal_names=["combo"],
+        signal_coords=["mean"],
+    )
+    assert out.signal_names == ["combo"]
+    assert out.signal_coords == ["mean"]
+
+
+def test_apply_typeerror_in_func_not_swallowed():
+    """An unrelated TypeError inside func must re-raise. Pre-1.2.0 the
+    blanket try/except in apply silently retried without axis=, masking
+    real bugs."""
+    parent = Data(np.zeros((100, 3)), sr=10, signal_names=["s"], signal_coords=["x", "y", "z"])
+
+    def bad(x, axis):
+        raise TypeError("unrelated bug, has nothing to do with axis")
+
+    with pytest.raises(TypeError, match="unrelated bug"):
+        parent.apply(bad)
+
+
+def test_apply_to_each_signal_n_signals_preserved(accelerometer):
+    """apply_to_each_signal with a shape-preserving (per-signal) op keeps
+    labels."""
+    out = accelerometer.apply_to_each_signal(lambda x: x * 2)
+    assert out.signal_names == accelerometer.signal_names
+    assert out.signal_coords == accelerometer.signal_coords
+
+
+def test_apply_along_signals_unchanged(accelerometer):
+    """Pin existing behavior: apply_along_signals collapses to 1D and labels
+    reset (already the case before 1.2.0; pinned to detect regressions)."""
+    out = accelerometer.apply_along_signals(np.mean)
+    assert out._sig.shape == (1000,)
+    assert out.signal_coords == ["x"]
 
 def test_apply_along_signals(accelerometer):
     applied = accelerometer.apply_along_signals(np.mean)

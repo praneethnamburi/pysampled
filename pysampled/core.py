@@ -1,3 +1,4 @@
+import inspect
 import itertools
 
 import numpy as np
@@ -1480,21 +1481,98 @@ class Data:
             meta=self.meta,
         )
 
-    def apply(self, func: Callable[..., np.ndarray], *args, **kwargs) -> "Data":
-        """Apply a function `func` to the signal. Common uses include performing
-        simple arithmetic manipulations, such as scaling."""
-        signal_names = kwargs.pop("signal_names", self.signal_names)
-        signal_coords = kwargs.pop("signal_coords", self.signal_coords)
-        
+    @staticmethod
+    def _func_accepts_axis(func: Callable[..., Any]) -> Optional[bool]:
+        """Whether `func` accepts an `axis` keyword. Returns `None` when the
+        signature can't be introspected (numpy ufuncs / C-implemented
+        callables) so the caller can fall back to a narrowed try/except."""
         try:
-            kwargs["axis"] = self.axis
-            proc_sig = func(self._sig, *args, **kwargs)
-        except TypeError:
-            kwargs.pop("axis")
-            proc_sig = func(self._sig, *args, **kwargs)
+            return "axis" in inspect.signature(func).parameters
+        except (ValueError, TypeError):
+            return None
 
+    def _apply_with_axis(
+        self,
+        func: Callable[..., np.ndarray],
+        args: tuple,
+        kwargs: dict,
+        axis_value: Optional[int],
+    ) -> np.ndarray:
+        """Call `func(self._sig, *args, **kwargs)`, supplying `axis=axis_value`
+        only when `func` accepts it. Replaces the older blanket try/except
+        TypeError pattern, which silently swallowed unrelated TypeError
+        instances raised inside `func` and made real bugs invisible (S3)."""
+        accepts = self._func_accepts_axis(func)
+        if accepts is True:
+            return func(self._sig, *args, axis=axis_value, **kwargs)
+        if accepts is False:
+            return func(self._sig, *args, **kwargs)
+        try:
+            return func(self._sig, *args, axis=axis_value, **kwargs)
+        except TypeError as exc:
+            msg = str(exc)
+            if "axis" in msg or "unexpected keyword" in msg:
+                return func(self._sig, *args, **kwargs)
+            raise
+
+    @staticmethod
+    def _n_signals_of(arr: np.ndarray, axis: int) -> int:
+        """Number of signals along the non-time axis. 1 for 1D arrays, the
+        appropriate column count for 2D. Used to decide whether the unified
+        apply rule should reset labels."""
+        if arr.ndim == 1:
+            return 1
+        return arr.shape[(axis + 1) % arr.ndim]
+
+    def _resolve_apply_labels(
+        self,
+        proc_sig: np.ndarray,
+        signal_names_inp: List[str],
+        signal_coords_inp: List[str],
+        signal_names_explicit: bool,
+        signal_coords_explicit: bool,
+    ) -> Tuple[List[str], List[str]]:
+        """Decide what labels the output of an apply variant should carry.
+
+        Rule (1.2.0): if the caller passed `signal_names=` or `signal_coords=`
+        explicitly, those win. Otherwise, compare the number of signals before
+        and after `func`. Match → labels propagate; mismatch → both reset to
+        defaults (empty `signal_names`, which `_validate` later expands to
+        `["s0", "s1", …]`; `signal_coords=["x"]`)."""
+        n_in = self.n_signals()
+        n_out = self._n_signals_of(proc_sig, self.axis)
+        if n_in == n_out:
+            return signal_names_inp, signal_coords_inp
+        return (
+            signal_names_inp if signal_names_explicit else [],
+            signal_coords_inp if signal_coords_explicit else ["x"],
+        )
+
+    def apply(self, func: Callable[..., np.ndarray], *args, **kwargs) -> "Data":
+        """Apply a function `func` to the signal. Common uses include
+        performing simple arithmetic manipulations, such as scaling.
+
+        Label propagation rule (1.2.0): if `func` returns the same number of
+        signals as the input, `signal_names` and `signal_coords` are
+        preserved. If the count differs, both are reset to defaults — unless
+        the caller passes `signal_names=` or `signal_coords=` explicitly, in
+        which case those always win."""
+        signal_names_explicit = "signal_names" in kwargs
+        signal_coords_explicit = "signal_coords" in kwargs
+        signal_names_inp = kwargs.pop("signal_names", self.signal_names)
+        signal_coords_inp = kwargs.pop("signal_coords", self.signal_coords)
+
+        proc_sig = self._apply_with_axis(func, args, kwargs, self.axis)
+
+        signal_names, signal_coords = self._resolve_apply_labels(
+            proc_sig,
+            signal_names_inp,
+            signal_coords_inp,
+            signal_names_explicit,
+            signal_coords_explicit,
+        )
         return self._clone(
-            proc_sig, 
+            proc_sig,
             ("apply", {"func": str(func), "args": args, "kwargs": kwargs}),
             signal_names=signal_names,
             signal_coords=signal_coords,
@@ -1503,24 +1581,22 @@ class Data:
     def apply_along_signals(
         self, func: Callable[..., np.ndarray], *args, **kwargs
     ) -> "Data":
-        """Apply a function `func` along the signal axis"""
+        """Apply a function `func` along the signal axis. Same label rule as
+        :py:meth:`apply` — propagate iff `n_signals` matches."""
+        signal_names_explicit = "signal_names" in kwargs
+        signal_coords_explicit = "signal_coords" in kwargs
         signal_names_inp = kwargs.pop("signal_names", self.signal_names)
         signal_coords_inp = kwargs.pop("signal_coords", self.signal_coords)
 
-        try:
-            kwargs["axis"] = self.get_signal_axis()
-            proc_sig = func(self._sig, *args, **kwargs)
-        except TypeError:
-            kwargs.pop("axis")
-            proc_sig = func(self._sig, *args, **kwargs)
+        proc_sig = self._apply_with_axis(func, args, kwargs, self.get_signal_axis())
 
-        if proc_sig.shape != self().shape:
-            signal_coords = ["x"]
-            signal_names = []
-        else:
-            signal_coords = signal_coords_inp
-            signal_names = signal_names_inp
-
+        signal_names, signal_coords = self._resolve_apply_labels(
+            proc_sig,
+            signal_names_inp,
+            signal_coords_inp,
+            signal_names_explicit,
+            signal_coords_explicit,
+        )
         return self._clone(
             proc_sig,
             (
@@ -1534,22 +1610,39 @@ class Data:
     def apply_to_each_signal(
         self, func: Callable[..., np.ndarray], *args, **kwargs
     ) -> "Data":
-        """Apply a function to each signal (if self is a collection of signals) separately, and put it back together"""
+        """Apply a function to each signal (if self is a collection of
+        signals) separately, and put it back together. Same label rule as
+        :py:meth:`apply` — propagate iff `n_signals` matches."""
         if self().ndim == 1:
             return self.apply(func, *args, **kwargs)
 
         assert self().ndim == 2
+        signal_names_explicit = "signal_names" in kwargs
+        signal_coords_explicit = "signal_coords" in kwargs
+        signal_names_inp = kwargs.pop("signal_names", self.signal_names)
+        signal_coords_inp = kwargs.pop("signal_coords", self.signal_coords)
+
         proc_sig = np.vstack(
             [func(s._sig.copy(), *args, **kwargs) for s in self.split_to_1d()]
         )
         if self.axis == 0:
             proc_sig = proc_sig.T
+
+        signal_names, signal_coords = self._resolve_apply_labels(
+            proc_sig,
+            signal_names_inp,
+            signal_coords_inp,
+            signal_names_explicit,
+            signal_coords_explicit,
+        )
         return self._clone(
             proc_sig,
             (
                 "apply_to_each_signal",
                 {"func": str(func), "args": args, "kwargs": kwargs},
             ),
+            signal_names=signal_names,
+            signal_coords=signal_coords,
         )
 
     def regress(self, ref_sig: "Data") -> "Data":
