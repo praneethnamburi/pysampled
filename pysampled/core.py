@@ -426,14 +426,19 @@ class Data:
         self.signal_names = signal_names or []
         self.signal_coords = signal_coords or ["x"]
 
-        # Validate signal_names and signal_coords if provided
+        if not self.signal_names and self.signal_coords:
+            self.signal_names = self._get_default_signal_names()
+
+        self._validate()
+
+    def _validate(self) -> None:
+        """Enforce the load-bearing label/data invariant. Called from both
+        `__init__` and `__setstate__` so that constructor paths and pickle
+        round-trips share one consistency check."""
         if self.signal_coords and len(self.signal_coords) > 1:
             assert (
                 self.n_signals() % len(self.signal_coords) == 0
             ), "Number of multi-axis signals should be a multiple of the number of signal coordinates."
-        if not self.signal_names and self.signal_coords:
-            self.signal_names = self._get_default_signal_names()
-
         assert self.n_signals() == len(self.signal_names) * len(self.signal_coords)
 
     def _get_default_signal_names(self) -> List[str]:
@@ -451,6 +456,7 @@ class Data:
             self.signal_coords = ["x"]
         if not hasattr(self, "signal_names"):
             self.signal_names = self._get_default_signal_names()
+        self._validate()
 
     def __call__(self, col: Optional[Union[int, str]] = None) -> np.ndarray:
         """Return either a specific column or the entire set 2D signal.

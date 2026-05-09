@@ -665,6 +665,40 @@ def test_meta_survives_multi_step_pipeline():
     assert out.meta.get("stream_id") == "abc"
 
 
+def test_init_rejects_n_signals_label_mismatch():
+    """The n_signals == len(signal_names) * len(signal_coords) invariant must
+    be enforced at construction time. Pinned so the upcoming _validate
+    refactor cannot silently weaken it."""
+    with pytest.raises(AssertionError):
+        Data(
+            np.zeros((100, 6)),
+            sr=10,
+            signal_names=["a", "b"],
+            signal_coords=["x", "y"],
+        )
+
+
+def test_setstate_validates_malformed_pickle():
+    """A pickle whose signal_names / signal_coords / data shape no longer
+    satisfy the n_signals == names * coords invariant must raise on
+    unpickle, not silently restore. The existing old-shape round-trip test
+    only covers the missing-attribute path; this pins the malformed path."""
+    parent = Data(
+        np.zeros((100, 6)),
+        sr=10,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+    )
+    state = parent.__dict__.copy()
+    state["signal_names"] = ["a", "b", "c"]  # 6 != 3 * 3
+    payload = pickle.dumps(state)
+
+    restored_state = pickle.loads(payload)
+    new = Data.__new__(Data)
+    with pytest.raises(AssertionError):
+        new.__setstate__(restored_state)
+
+
 def test_setstate_old_pickle_round_trip():
     """An old pickle (no meta, no signal_coords, no signal_names) must
     round-trip with the documented defaults restored."""

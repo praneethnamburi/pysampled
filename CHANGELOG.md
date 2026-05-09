@@ -8,6 +8,10 @@ In progress. The opening commit restores CI compatibility against newer numpy an
 ### Fixed
 - `pysampled.Data.frac_power` now resolves the trapezoidal-rule helper at import time via a small shim (`np.trapezoid` on numpy 2.x, falling back to `np.trapz` on numpy 1.x). 1.1.3's CI failed on Ubuntu / macOS / Python 3.11 because numpy 2.x removed the legacy `np.trapz` symbol; the shim keeps `frac_power` working on both lineages without pinning numpy.
 - `pysampled.Data.sparc` now passes `freq_sel` as a keyword argument to `scipy.integrate.simpson`. scipy 1.14 made that argument keyword-only, so the old positional call raised `TypeError` on newer scipy installs.
+- `pysampled.Data.__setstate__` now re-runs the `n_signals == len(signal_names) * len(signal_coords)` invariant check after restoring an old pickle. Previously a hand-mutated pickle whose labels no longer matched the underlying data shape would unpickle silently; now it raises immediately.
+
+### Changed
+- The constructor invariant block in `pysampled.Data.__init__` was extracted to a private `_validate()` method, called from both `__init__` and `__setstate__`. No public API change; the constructor still raises the same error on a label/data mismatch.
 
 ## [1.1.3]
 
