@@ -3,6 +3,8 @@ All notable changes to this project will be documented in this file.
 
 ## [1.1.3]
 
+Maintenance release driven by a 2026-05-09 audit (`TODO.md`) that found seven propagation bugs around `signal_names` / `signal_coords` / `meta` / `_history`. Two of them (B1 and B2) were silent label-vs-data mismatches that satisfied the existing shape invariant but produced mislabelled data. New tests pin each fix using 2D fixtures.
+
 ### Fixed
 - `pysampled.Data.split_to_1d` now emits a well-formed 2-tuple history entry. The previous 3-tuple `("split", col, (signal_name, signal_coord))` broke downstream history consumers that expect every entry to be `(name, payload)`. The new payload is a dict with `col`, `signal_name`, `signal_coord` keys.
 - `pysampled.Data.__init__` now rejects an explicitly empty `signal_coords=[]` with a clear `ValueError` instead of silently coercing it to the default and later zero-dividing in `_get_default_signal_names`.
