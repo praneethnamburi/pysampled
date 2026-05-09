@@ -1076,7 +1076,22 @@ class Data:
         rw = self.make_running_win(win_size, win_inc)
         ret_sig = np.array([func(self._sig[r_win], self.axis) for r_win in rw()])
         ret_sr = self.sr / round(win_inc * self.sr)
-        return Data(ret_sig, ret_sr, axis=self.axis, t0=self.t[rw.center_idx[0]])
+        return Data(
+            ret_sig,
+            ret_sr,
+            axis=self.axis,
+            history=list(self._history)
+            + [
+                (
+                    "apply_running_win",
+                    {"func": str(func), "win_size": win_size, "win_inc": win_inc},
+                )
+            ],
+            t0=self.t[rw.center_idx[0]],
+            meta=dict(self.meta),
+            signal_names=list(self.signal_names),
+            signal_coords=list(self.signal_coords),
+        )
 
     def __le__(self, other: Union[int, float]) -> "Data":
         return self._comparison("__le__", other)
@@ -1263,9 +1278,12 @@ class Data:
         return Data(
             amp,
             sr=1 / df,
+            history=list(self._history)
+            + [("fft_as_sampled", {"args": args, "kwargs": kwargs})],
             t0=f[0],
-            signal_names=self.signal_names,
-            signal_coords=self.signal_coords,
+            meta=dict(self.meta),
+            signal_names=list(self.signal_names),
+            signal_coords=list(self.signal_coords),
         )
 
     def psd(
@@ -1312,9 +1330,12 @@ class Data:
         return Data(
             Pxx,
             sr=1 / df,
+            history=list(self._history)
+            + [("psd_as_sampled", {"args": args, "kwargs": kwargs})],
             t0=f[0],
-            signal_names=self.signal_names,
-            signal_coords=self.signal_coords,
+            meta=dict(self.meta),
+            signal_names=list(self.signal_names),
+            signal_coords=list(self.signal_coords),
         )
 
     def frac_power(
@@ -1365,9 +1386,23 @@ class Data:
         return Data(
             ret,
             1 / win_inc,
+            history=list(self._history)
+            + [
+                (
+                    "frac_power",
+                    {
+                        "freq_lim": freq_lim,
+                        "win_size": win_size,
+                        "win_inc": win_inc,
+                        "freq_dx": freq_dx,
+                        "highpass_cutoff": highpass_cutoff,
+                    },
+                )
+            ],
             t0=self.t_start() + win_size / 2,
-            signal_names=self.signal_names,
-            signal_coords=self.signal_coords,
+            meta=dict(self.meta),
+            signal_names=list(self.signal_names),
+            signal_coords=list(self.signal_coords),
         )
 
     def diff(self) -> "Data":

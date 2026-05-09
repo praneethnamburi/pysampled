@@ -304,6 +304,23 @@ def test_apply_running_win(white_noise):
     assert applied._sig.shape[0] == 95
 
 
+def test_apply_running_win_propagates_labels_meta_history():
+    """Rate-changing methods build a fresh Data; they must still propagate
+    signal_names / signal_coords / meta / _history."""
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    applied = parent.apply_running_win(np.mean, win_size=0.5, win_inc=0.1)
+    assert applied.signal_names == ["acc1", "acc2"]
+    assert applied.signal_coords == ["x", "y", "z"]
+    assert applied.meta.get("k") == "v"
+    assert any(h[0] == "apply_running_win" for h in applied._history)
+
+
 def test_comparison(white_noise):
     assert (white_noise <= 0)._sig.shape == white_noise._sig.shape
 
@@ -357,6 +374,21 @@ def test_fft_as_sampled(white_noise):
     assert fft_sampled._sig.shape[0] == 500
 
 
+def test_fft_as_sampled_propagates_meta_history():
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    out = parent.fft_as_sampled()
+    assert out.signal_names == ["acc1", "acc2"]
+    assert out.signal_coords == ["x", "y", "z"]
+    assert out.meta.get("k") == "v"
+    assert any(h[0] == "fft_as_sampled" for h in out._history)
+
+
 def test_psd(white_noise, accelerometer):
     f, Pxx = white_noise.psd()
     assert f.shape == Pxx.shape
@@ -367,6 +399,33 @@ def test_psd(white_noise, accelerometer):
 def test_psd_as_sampled(white_noise):
     psd_sampled = white_noise.psd_as_sampled()
     assert psd_sampled._sig.shape[0] == 251
+
+
+def test_psd_as_sampled_propagates_meta_history():
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    out = parent.psd_as_sampled()
+    assert out.signal_names == ["acc1", "acc2"]
+    assert out.signal_coords == ["x", "y", "z"]
+    assert out.meta.get("k") == "v"
+    assert any(h[0] == "psd_as_sampled" for h in out._history)
+
+
+def test_frac_power_propagates_meta_history():
+    """frac_power outputs a 1D scalar-per-window signal, so use a 1D parent."""
+    parent = Data(
+        np.random.random(2000),
+        sr=100,
+        meta={"k": "v"},
+    )
+    out = parent.frac_power(freq_lim=(2.0, 10.0), win_size=2.0, win_inc=1.0)
+    assert out.meta.get("k") == "v"
+    assert any(h[0] == "frac_power" for h in out._history)
 
 
 def test_diff(white_noise):
