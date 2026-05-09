@@ -501,11 +501,12 @@ class Data:
     ) -> "Data":
         """Clone the object with a new signal and keep track of history. This
         method is used internally to create new objects after applying signal
-        processing methods.
+        processing methods. Mutable state (`meta`, `signal_names`,
+        `signal_coords`, `_history`) is shallow-copied so the parent and the
+        clone do not alias.
         """
         if his_append is None:
-            # only useful when cloning without manipulating the data, e.g. returning a subset of columns
-            his = self._history
+            his = list(self._history)
         else:
             his = self._history + [his_append]
 
@@ -523,9 +524,9 @@ class Data:
             axis,
             his,
             t0,
-            meta=meta,
-            signal_names=signal_names,
-            signal_coords=signal_coords,
+            meta=dict(meta),
+            signal_names=list(signal_names),
+            signal_coords=list(signal_coords),
         )
 
     def copy(self) -> "Data":

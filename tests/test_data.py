@@ -88,6 +88,60 @@ def test_clone(three_sine_waves):
     assert np.allclose(cloned._sig, three_sine_waves._sig * 2)
 
 
+def test_clone_does_not_alias_meta(data_2d):
+    """Mutating meta on a clone must not bleed into the parent."""
+    parent = Data(
+        np.random.random((100, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    clone = parent.scale(2.0)
+    clone.meta["new"] = "added"
+    assert "new" not in parent.meta
+
+
+def test_clone_does_not_alias_signal_names(data_2d):
+    parent = Data(
+        np.random.random((100, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+    )
+    clone = parent.scale(2.0)
+    clone.signal_names.append("acc3")
+    assert parent.signal_names == ["acc1", "acc2"]
+
+
+def test_clone_does_not_alias_signal_coords(data_2d):
+    parent = Data(
+        np.random.random((100, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+    )
+    clone = parent.scale(2.0)
+    clone.signal_coords.append("w")
+    assert parent.signal_coords == ["x", "y", "z"]
+
+
+def test_copy_does_not_alias_history():
+    parent = Data(np.zeros(100), sr=10)
+    dup = parent.copy()
+    dup._history.append(("mutated", None))
+    assert ("mutated", None) not in parent._history
+
+
+def test_clone_does_not_alias_history_when_no_append():
+    """_clone called without his_append used to assign self._history by
+    reference; mutating one then bled into the other."""
+    parent = Data(np.zeros(100), sr=10)
+    clone = parent._clone(parent._sig)  # no his_append
+    clone._history.append(("mutated", None))
+    assert ("mutated", None) not in parent._history
+
+
 def test_analytic(white_noise, accelerometer):
     analytic_signal = white_noise.analytic()
     assert np.allclose(np.real(analytic_signal._sig), white_noise._sig)

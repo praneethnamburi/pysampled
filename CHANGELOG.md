@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - `pysampled.Data.split_to_1d` now emits a well-formed 2-tuple history entry. The previous 3-tuple `("split", col, (signal_name, signal_coord))` broke downstream history consumers that expect every entry to be `(name, payload)`. The new payload is a dict with `col`, `signal_name`, `signal_coord` keys.
 - `pysampled.Data.__init__` now rejects an explicitly empty `signal_coords=[]` with a clear `ValueError` instead of silently coercing it to the default and later zero-dividing in `_get_default_signal_names`.
+- `pysampled.Data._clone` and `pysampled.Data.copy` no longer alias the parent's `meta`, `signal_names`, `signal_coords`, or `_history`. Mutating any of these on a clone (or copy) used to leak back into the parent. They are now shallow-copied at clone time.
 
 ## [1.1.2]
 Added `pysampled.Data.envelope2` while packaging the `delsys` module. This was originally written by Roger Pallares-Lopez, and kept in an inherited class to not create unintended changes in this repository. But, the time for that has passed, and Praneeth is now migrating this function here for world code peace.
