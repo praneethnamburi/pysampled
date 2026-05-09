@@ -144,6 +144,66 @@ def test_clone_does_not_alias_history_when_no_append():
     assert ("mutated", None) not in parent._history
 
 
+def test_clone_with_rate_does_not_alias():
+    """The rate-changing sibling of _clone must apply the same shallow-copy
+    rules as _clone (B6) so that meta / signal_names / signal_coords /
+    _history on a rate-changed clone never bleed back into the parent."""
+    parent = Data(
+        np.random.random((100, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    new_sig = np.random.random((50, 6))
+    clone = parent._clone_with_rate(new_sig, new_sr=50, his_append=("test", None))
+
+    clone.meta["new"] = "added"
+    assert "new" not in parent.meta
+    clone.signal_names.append("acc3")
+    assert parent.signal_names == ["acc1", "acc2"]
+    clone.signal_coords.append("w")
+    assert parent.signal_coords == ["x", "y", "z"]
+    clone._history.append(("mutated", None))
+    assert ("mutated", None) not in parent._history
+
+
+def test_resample_does_not_alias_meta():
+    """Pre-1.2.0 `resample` passed `meta=meta` and `signal_names=self.signal_names`
+    directly into the constructor, aliasing the parent's mutable state. After
+    routing through _clone_with_rate the clone gets fresh shallow copies."""
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    clone = parent.resample(50)
+
+    clone.meta["new"] = "added"
+    assert "new" not in parent.meta
+    clone.signal_names.append("acc3")
+    assert parent.signal_names == ["acc1", "acc2"]
+    clone.signal_coords.append("w")
+    assert parent.signal_coords == ["x", "y", "z"]
+
+
+def test_resample_propagates_labels_meta_history():
+    parent = Data(
+        np.random.random((1000, 6)),
+        sr=100,
+        signal_names=["acc1", "acc2"],
+        signal_coords=["x", "y", "z"],
+        meta={"k": "v"},
+    )
+    clone = parent.resample(50)
+    assert clone.signal_names == ["acc1", "acc2"]
+    assert clone.signal_coords == ["x", "y", "z"]
+    assert clone.meta.get("k") == "v"
+    assert any(h[0] == "resample" for h in clone._history)
+
+
 def test_analytic(white_noise, accelerometer):
     analytic_signal = white_noise.analytic()
     assert np.allclose(np.real(analytic_signal._sig), white_noise._sig)

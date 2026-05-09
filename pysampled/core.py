@@ -540,6 +540,40 @@ class Data:
             signal_coords=list(signal_coords),
         )
 
+    def _clone_with_rate(
+        self,
+        proc_sig: np.ndarray,
+        new_sr: float,
+        *,
+        his_append: Tuple[str, Any],
+        t0: Optional[float] = None,
+        **kwargs,
+    ) -> "Data":
+        """Rate-changing sibling of :py:meth:`_clone`. Used by methods that
+        produce a `Data` at a different sampling rate (`resample`,
+        `apply_running_win`, `fft_as_sampled`, `psd_as_sampled`,
+        `frac_power`). Applies the same shallow-copy rules as `_clone` for
+        `meta` / `signal_names` / `signal_coords` / `_history`, so the parent
+        and the clone never alias. `his_append` is required because rate
+        changes always carry a meaningful history entry.
+        """
+        meta = self.meta if hasattr(self, "meta") else {}
+        axis = kwargs.pop("axis", self.axis)
+        if t0 is None:
+            t0 = self._t0
+        signal_names = kwargs.pop("signal_names", self.signal_names)
+        signal_coords = kwargs.pop("signal_coords", self.signal_coords)
+        return self.__class__(
+            proc_sig,
+            new_sr,
+            axis,
+            self._history + [his_append],
+            t0,
+            meta=dict(meta),
+            signal_names=list(signal_names),
+            signal_coords=list(signal_coords),
+        )
+
     def copy(self) -> "Data":
         """Make a copy of the signal. Used by the :py:meth:`set_nan` method to avoid changing the original signal."""
         return self._clone(self._sig.copy())
@@ -1087,21 +1121,14 @@ class Data:
         rw = self.make_running_win(win_size, win_inc)
         ret_sig = np.array([func(self._sig[r_win], self.axis) for r_win in rw()])
         ret_sr = self.sr / round(win_inc * self.sr)
-        return Data(
+        return self._clone_with_rate(
             ret_sig,
             ret_sr,
-            axis=self.axis,
-            history=list(self._history)
-            + [
-                (
-                    "apply_running_win",
-                    {"func": str(func), "win_size": win_size, "win_inc": win_inc},
-                )
-            ],
+            his_append=(
+                "apply_running_win",
+                {"func": str(func), "win_size": win_size, "win_inc": win_inc},
+            ),
             t0=self.t[rw.center_idx[0]],
-            meta=dict(self.meta),
-            signal_names=list(self.signal_names),
-            signal_coords=list(self.signal_coords),
         )
 
     def __le__(self, other: Union[int, float]) -> "Data":
@@ -1286,15 +1313,11 @@ class Data:
         """
         f, amp = self.fft(*args, **kwargs)
         df = (f[-1] - f[0]) / (len(f) - 1)
-        return Data(
+        return self._clone_with_rate(
             amp,
-            sr=1 / df,
-            history=list(self._history)
-            + [("fft_as_sampled", {"args": args, "kwargs": kwargs})],
+            new_sr=1 / df,
+            his_append=("fft_as_sampled", {"args": args, "kwargs": kwargs}),
             t0=f[0],
-            meta=dict(self.meta),
-            signal_names=list(self.signal_names),
-            signal_coords=list(self.signal_coords),
         )
 
     def psd(
@@ -1338,15 +1361,11 @@ class Data:
         """
         f, Pxx = self.psd(*args, **kwargs)
         df = (f[-1] - f[0]) / (len(f) - 1)
-        return Data(
+        return self._clone_with_rate(
             Pxx,
-            sr=1 / df,
-            history=list(self._history)
-            + [("psd_as_sampled", {"args": args, "kwargs": kwargs})],
+            new_sr=1 / df,
+            his_append=("psd_as_sampled", {"args": args, "kwargs": kwargs}),
             t0=f[0],
-            meta=dict(self.meta),
-            signal_names=list(self.signal_names),
-            signal_coords=list(self.signal_coords),
         )
 
     def frac_power(
@@ -1394,26 +1413,20 @@ class Data:
                 ret.append(np.nan)
                 curr_t = curr_t + win_inc
 
-        return Data(
-            ret,
-            1 / win_inc,
-            history=list(self._history)
-            + [
-                (
-                    "frac_power",
-                    {
-                        "freq_lim": freq_lim,
-                        "win_size": win_size,
-                        "win_inc": win_inc,
-                        "freq_dx": freq_dx,
-                        "highpass_cutoff": highpass_cutoff,
-                    },
-                )
-            ],
+        return self._clone_with_rate(
+            np.array(ret),
+            new_sr=1 / win_inc,
+            his_append=(
+                "frac_power",
+                {
+                    "freq_lim": freq_lim,
+                    "win_size": win_size,
+                    "win_inc": win_inc,
+                    "freq_dx": freq_dx,
+                    "highpass_cutoff": highpass_cutoff,
+                },
+            ),
             t0=self.t_start() + win_size / 2,
-            meta=dict(self.meta),
-            signal_names=list(self.signal_names),
-            signal_coords=list(self.signal_coords),
         )
 
     def diff(self) -> "Data":
@@ -1572,19 +1585,11 @@ class Data:
             *args,
             **kwargs,
         )
-        if hasattr(self, "meta"):
-            meta = self.meta
-        else:
-            meta = {}
-        return self.__class__(
+        return self._clone_with_rate(
             proc_sig,
-            sr=new_sr,
-            axis=self.axis,
-            history=self._history + [("resample", new_sr)],
+            new_sr=new_sr,
+            his_append=("resample", new_sr),
             t0=proc_t[0],
-            meta=meta,
-            signal_names=self.signal_names,
-            signal_coords=self.signal_coords,
         )
 
     def smooth(

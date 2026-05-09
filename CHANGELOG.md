@@ -12,6 +12,7 @@ In progress. The opening commit restores CI compatibility against newer numpy an
 
 ### Changed
 - The constructor invariant block in `pysampled.Data.__init__` was extracted to a private `_validate()` method, called from both `__init__` and `__setstate__`. No public API change; the constructor still raises the same error on a label/data mismatch.
+- The five rate-changing methods (`resample`, `apply_running_win`, `fft_as_sampled`, `psd_as_sampled`, `frac_power`) now route through a new private `_clone_with_rate(proc_sig, new_sr, *, his_append, t0=None, **kwargs)` helper. Functionally equivalent to the old per-method `Data(...)` calls; centralises the meta / signal_names / signal_coords / `_history` shallow-copy rule. Incidentally fixes a latent aliasing bug in `resample` (which previously passed `meta` and label lists by reference).
 
 ## [1.1.3]
 
