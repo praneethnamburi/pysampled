@@ -1721,15 +1721,6 @@ class Data:
                 return func(self._sig, *args, **kwargs)
             raise
 
-    @staticmethod
-    def _n_signals_of(arr: np.ndarray, axis: int) -> int:
-        """Number of signals along the non-time axis. 1 for 1D arrays, the
-        appropriate column count for 2D. Used to decide whether the unified
-        apply rule should reset labels."""
-        if arr.ndim == 1:
-            return 1
-        return arr.shape[(axis + 1) % arr.ndim]
-
     def _resolve_apply_labels(
         self,
         proc_sig: np.ndarray,
@@ -1746,7 +1737,8 @@ class Data:
         defaults (empty `signal_names`, which `_validate` later expands to
         `["s0", "s1", …]`; `signal_coords=["x"]`)."""
         n_in = self.n_signals()
-        n_out = self._n_signals_of(proc_sig, self.axis)
+        # Same rule as n_signals() but for proc_sig before it's wrapped.
+        n_out = 1 if proc_sig.ndim == 1 else proc_sig.shape[(self.axis + 1) % proc_sig.ndim]
         if n_in == n_out:
             return signal_names_inp, signal_coords_inp
         return (
