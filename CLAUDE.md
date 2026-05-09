@@ -9,6 +9,5 @@ Cross-cutting conventions (docstring style, formatters, build backend,
 license, etc.) live in `C:/dev/pn-specs/CONVENTIONS.md`. Don't restate
 them when reasoning about this repo — assume they apply.
 
-Release history is in [`CHANGELOG.md`](CHANGELOG.md). There is no
-`TODO.md` yet — deferred work currently lives in the spec's
-"Open questions" section.
+Detailed deferred work for this repo lives in [`TODO.md`](TODO.md).
+Release history is in [`CHANGELOG.md`](CHANGELOG.md).
