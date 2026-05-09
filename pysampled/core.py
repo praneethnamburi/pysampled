@@ -8,6 +8,11 @@ import scipy.signal
 
 from typing import Union, List, Tuple, Callable, Optional, Any
 
+# numpy 2.0 renamed np.trapz to np.trapezoid; np.trapz was removed in
+# subsequent 2.x releases. Resolve once at import time so frac_power and any
+# future trapezoidal-rule callers work on both lineages.
+_np_trapezoid = getattr(np, "trapezoid", None) or np.trapz
+
 # Optional dependencies - imported inside the methods
 ## import sklearn.linear_model (for sampled.Data.regress)
 ## from airPLS import airPLS (for sampled.Data.get_trend_airPLS, sampled.Data.detrend_airPLS)
@@ -1370,13 +1375,13 @@ class Data:
                     f, amp = sig_piece.shift_baseline().highpass(highpass_cutoff).fft()
                 else:
                     f, amp = sig_piece.shift_baseline().fft()
-                area_of_interest = np.trapz(
+                area_of_interest = _np_trapezoid(
                     scipy.interpolate.interp1d(f, amp)(
                         np.r_[freq_lim[0] : freq_lim[1] : freq_dx]
                     ),
                     dx=freq_dx,
                 )
-                total_area = np.trapz(amp, f)
+                total_area = _np_trapezoid(amp, f)
                 ret.append(area_of_interest / total_area)
                 curr_t = curr_t + win_inc
             except ValueError:
@@ -1737,7 +1742,7 @@ class Data:
         Mf_sel_diff = np.gradient(Mfreq_sel) / np.mean(np.diff(freq_sel))
         fc = freq_sel[-1]
         integrand = np.sqrt((1 / fc) ** 2 + Mf_sel_diff**2)
-        sparc = -scipy.integrate.simpson(integrand, freq_sel)
+        sparc = -scipy.integrate.simpson(integrand, x=freq_sel)
         return sparc
 
     def set_nan(self, interval_list: List[Tuple[float, float]]) -> "Data":

@@ -430,6 +430,21 @@ def test_frac_power_propagates_meta_history():
     assert any(h[0] == "frac_power" for h in out._history)
 
 
+def test_np_trapezoid_shim_resolves_on_either_numpy_lineage():
+    """The compat shim in pysampled.core picks np.trapezoid on numpy 2.x and
+    falls back to np.trapz on numpy 1.x. CI failed on 1.1.3 because numpy 2.x
+    removed np.trapz; this test pins that frac_power keeps working regardless."""
+    from pysampled.core import _np_trapezoid
+
+    assert _np_trapezoid is not None
+    expected = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+    assert _np_trapezoid is expected
+
+    parent = Data(np.random.random(2000), sr=100)
+    out = parent.frac_power(freq_lim=(2.0, 10.0), win_size=2.0, win_inc=1.0)
+    assert np.all(np.isfinite(out._sig[~np.isnan(out._sig)]))
+
+
 def test_diff(white_noise):
     diffed = white_noise.diff()
     assert diffed._sig.shape == (1000,)

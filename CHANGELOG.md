@@ -1,6 +1,14 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.2.0]
+
+In progress. The opening commit restores CI compatibility against newer numpy and scipy releases.
+
+### Fixed
+- `pysampled.Data.frac_power` now resolves the trapezoidal-rule helper at import time via a small shim (`np.trapezoid` on numpy 2.x, falling back to `np.trapz` on numpy 1.x). 1.1.3's CI failed on Ubuntu / macOS / Python 3.11 because numpy 2.x removed the legacy `np.trapz` symbol; the shim keeps `frac_power` working on both lineages without pinning numpy.
+- `pysampled.Data.sparc` now passes `freq_sel` as a keyword argument to `scipy.integrate.simpson`. scipy 1.14 made that argument keyword-only, so the old positional call raised `TypeError` on newer scipy installs.
+
 ## [1.1.3]
 
 Maintenance release driven by a 2026-05-09 audit (`TODO.md`) that found seven propagation bugs around `signal_names` / `signal_coords` / `meta` / `_history`. Two of them (B1 and B2) were silent label-vs-data mismatches that satisfied the existing shape invariant but produced mislabelled data. New tests pin each fix using 2D fixtures.
