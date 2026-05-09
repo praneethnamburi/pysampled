@@ -973,16 +973,24 @@ class Data:
         """
         Retrieve a subset of signals based on their names.
 
+        The output's column ordering is `itertools.product(multiaxis_signal_names,
+        self.signal_coords)`, i.e. the user-supplied name order is honored
+        (so `data_2d[["acc2","acc1"]]` returns the acc2 block before the acc1
+        block) while keeping the names-outer / coords-inner invariant.
+
         Args:
             multiaxis_signal_names (List[str]): List of signal names to retrieve.
 
         Returns:
             Data: A new Data object containing the selected signals.
         """
+        parent_pairs = list(itertools.product(self.signal_names, self.signal_coords))
         indices = np.array(
             [
-                x[0] in multiaxis_signal_names
-                for x in itertools.product(self.signal_names, self.signal_coords)
+                parent_pairs.index((name, coord))
+                for name, coord in itertools.product(
+                    multiaxis_signal_names, self.signal_coords
+                )
             ]
         )
         return self._clone(
@@ -995,16 +1003,23 @@ class Data:
         """
         Retrieve a subset of signals based on their coordinates.
 
+        The output's column ordering is `itertools.product(self.signal_names,
+        coord_names)`, so the user-supplied coord order is honored within each
+        signal's block while preserving the names-outer / coords-inner
+        invariant. For `data_2d[["z","x"]]`, the resulting columns are
+        `[acc1_z, acc1_x, acc2_z, acc2_x]`.
+
         Args:
             coord_names (List[str]): List of coordinate names to retrieve.
 
         Returns:
             Data: A new Data object containing the selected coordinates.
         """
+        parent_pairs = list(itertools.product(self.signal_names, self.signal_coords))
         indices = np.array(
             [
-                x[1] in coord_names
-                for x in itertools.product(self.signal_names, self.signal_coords)
+                parent_pairs.index((name, coord))
+                for name, coord in itertools.product(self.signal_names, coord_names)
             ]
         )
         return self._clone(

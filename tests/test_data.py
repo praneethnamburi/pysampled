@@ -459,6 +459,37 @@ def test_access_by_signal_name_and_coord(data_2d):
     assert acc1_x.signal_coords == ["x"]
 
 
+def test_get_multiaxis_signals_preserves_user_order(data_2d):
+    """Selecting names in non-parent order must reorder the columns to
+    match. Parent columns are [acc1_x, acc1_y, acc1_z, acc2_x, acc2_y, acc2_z]
+    so requesting ['acc2', 'acc1'] must yield columns [3,4,5,0,1,2]."""
+    sub = data_2d[["acc2", "acc1"]]
+    assert sub.signal_names == ["acc2", "acc1"]
+    assert sub.signal_coords == ["x", "y", "z"]
+    expected = data_2d()[:, [3, 4, 5, 0, 1, 2]]
+    assert np.allclose(sub(), expected)
+
+
+def test_get_coord_preserves_user_order(data_2d):
+    """Selecting coords in non-parent order must reorder columns while
+    keeping the names-outer / coords-inner invariant. For coords ['z','x']
+    output cols = [(acc1,z),(acc1,x),(acc2,z),(acc2,x)] = parent [2,0,5,3]."""
+    sub = data_2d[["z", "x"]]
+    assert sub.signal_names == ["acc1", "acc2"]
+    assert sub.signal_coords == ["z", "x"]
+    expected = data_2d()[:, [2, 0, 5, 3]]
+    assert np.allclose(sub(), expected)
+
+
+def test_get_multiaxis_signals_preserves_user_order_transposed(data_2d_transposed):
+    """Same property must hold along the other axis."""
+    sub = data_2d_transposed[["acc2", "acc1"]]
+    assert sub.signal_names == ["acc2", "acc1"]
+    assert sub.signal_coords == ["x", "y", "z"]
+    expected = data_2d_transposed()[[3, 4, 5, 0, 1, 2], :]
+    assert np.allclose(sub(), expected)
+
+
 def test_invalid_access(data_2d):
     """Test invalid access scenarios."""
     with pytest.raises(KeyError):
