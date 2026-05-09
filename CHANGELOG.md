@@ -3,7 +3,10 @@ All notable changes to this project will be documented in this file.
 
 ## [1.2.0]
 
-In progress. The opening commit restores CI compatibility against newer numpy and scipy releases.
+In progress. The opening commits restore CI compatibility against newer numpy and scipy releases, then ship internal cleanup, the apply-variant unification, and a small split/merge feature pair.
+
+### Added
+- `pysampled.Data.split_by_signal_name` and `pysampled.Data.split_by_signal_coord` complement the existing `split_to_1d`. They return one child `Data` per `signal_name` (or per `signal_coord`), with the corresponding labels preserved on each child. 1D signals fall through to `[self]`, matching `split_to_1d`.
 
 ### Fixed
 - `pysampled.Data.frac_power` now resolves the trapezoidal-rule helper at import time via a small shim (`np.trapezoid` on numpy 2.x, falling back to `np.trapz` on numpy 1.x). 1.1.3's CI failed on Ubuntu / macOS / Python 3.11 because numpy 2.x removed the legacy `np.trapz` symbol; the shim keeps `frac_power` working on both lineages without pinning numpy.

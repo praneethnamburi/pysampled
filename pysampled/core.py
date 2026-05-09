@@ -1210,6 +1210,22 @@ class Data:
             return 1
         return self().shape[self.get_signal_axis()]
 
+    def split_by_signal_name(self) -> List["Data"]:
+        """Split into one `Data` per `signal_name`. Equivalent to
+        `[self[name] for name in self.signal_names]`. For a 1D signal,
+        returns `[self]` (matches `split_to_1d`)."""
+        if self().ndim == 1:
+            return [self]
+        return [self[name] for name in self.signal_names]
+
+    def split_by_signal_coord(self) -> List["Data"]:
+        """Split into one `Data` per `signal_coord`. Equivalent to
+        `[self[coord] for coord in self.signal_coords]`. For a 1D signal,
+        returns `[self]`."""
+        if self().ndim == 1:
+            return [self]
+        return [self[coord] for coord in self.signal_coords]
+
     def split_to_1d(self) -> List["Data"]:
         """Split a 2D signal into 1D signals. Returns a list of 1D signals. Returns the signal itself, still in a list, for a 1D signal."""
         if self().ndim == 1:

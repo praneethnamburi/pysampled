@@ -597,6 +597,43 @@ def test_apply_along_signals_unchanged(accelerometer):
     assert out._sig.shape == (1000,)
     assert out.signal_coords == ["x"]
 
+
+def test_split_by_signal_name(data_2d):
+    parts = data_2d.split_by_signal_name()
+    assert len(parts) == 2
+    assert parts[0].signal_names == ["acc1"]
+    assert parts[0].signal_coords == ["x", "y", "z"]
+    assert parts[0]._sig.shape == (1000, 3)
+    assert parts[1].signal_names == ["acc2"]
+    assert np.allclose(parts[0](), data_2d()[:, :3])
+    assert np.allclose(parts[1](), data_2d()[:, 3:])
+
+
+def test_split_by_signal_coord(data_2d):
+    parts = data_2d.split_by_signal_coord()
+    assert len(parts) == 3
+    for part, coord in zip(parts, ["x", "y", "z"]):
+        assert part.signal_coords == [coord]
+        assert part.signal_names == ["acc1", "acc2"]
+        assert part._sig.shape == (1000, 2)
+
+
+def test_split_by_signal_name_on_data_2d_transposed(data_2d_transposed):
+    parts = data_2d_transposed.split_by_signal_name()
+    assert len(parts) == 2
+    assert parts[0].signal_names == ["acc1"]
+    assert parts[0]._sig.shape == (3, 1000)
+
+
+def test_split_by_signal_name_1d_returns_self(data_1d):
+    parts = data_1d.split_by_signal_name()
+    assert parts == [data_1d]
+
+
+def test_split_by_signal_coord_1d_returns_self(data_1d):
+    parts = data_1d.split_by_signal_coord()
+    assert parts == [data_1d]
+
 def test_apply_along_signals(accelerometer):
     applied = accelerometer.apply_along_signals(np.mean)
     assert applied._sig.shape == (1000,)
