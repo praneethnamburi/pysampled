@@ -720,7 +720,7 @@ class Data:
 
         proc_sig = scipy.signal.filtfilt(b, a, self._sig, axis=self.axis)
         if nan_manip:
-            proc_sig[nan_bool] = np.NaN  # put back the NaNs in the same place
+            proc_sig[nan_bool] = np.nan  # put back the NaNs in the same place
 
         return self._clone(
             proc_sig,

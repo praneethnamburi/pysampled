@@ -247,6 +247,42 @@ def test_highpass(three_sine_waves):
     assert highpassed._sig.shape == three_sine_waves._sig.shape
 
 
+def test_butterfilt_preserves_nans_under_numpy2():
+    """`_butterfilt` interpnan's the input, filters, then re-applies the
+    NaN mask. The re-apply line used `np.NaN`, which numpy 2.x removed —
+    so any NaN-bearing signal through `Data.lowpass` / `Data.highpass`
+    crashed under numpy 2.x. Downstream callers (`immersionToolbox.ot`
+    velocity paths, `datanavigator.pointtracking` video export) routinely
+    pass NaN-bearing signals through these filters. Pins the 1.2.1 fix
+    so the regression cannot return.
+    """
+    sig_1d = np.sin(2 * np.pi * 1 * np.linspace(0, 10, 1000, endpoint=False))
+    nan_mask_1d = np.zeros(1000, dtype=bool)
+    nan_mask_1d[100:120] = True
+    nan_mask_1d[500:505] = True
+    sig_1d_with_nan = sig_1d.copy()
+    sig_1d_with_nan[nan_mask_1d] = np.nan
+
+    lp = Data(sig_1d_with_nan, sr=100).lowpass(5.0)
+    assert lp._sig.shape == (1000,)
+    assert np.array_equal(np.isnan(lp._sig), nan_mask_1d)
+
+    hp = Data(sig_1d_with_nan, sr=100).highpass(2.0)
+    assert hp._sig.shape == (1000,)
+    assert np.array_equal(np.isnan(hp._sig), nan_mask_1d)
+
+    sig_2d = np.tile(sig_1d[:, None], (1, 3))
+    nan_mask_2d = np.zeros((1000, 3), dtype=bool)
+    nan_mask_2d[100:120, :] = True
+    nan_mask_2d[500:505, 0] = True
+    sig_2d_with_nan = sig_2d.copy()
+    sig_2d_with_nan[nan_mask_2d] = np.nan
+
+    lp2 = Data(sig_2d_with_nan, sr=100, signal_names=["a", "b", "c"]).lowpass(5.0)
+    assert lp2._sig.shape == (1000, 3)
+    assert np.array_equal(np.isnan(lp2._sig), nan_mask_2d)
+
+
 def test_smooth(white_noise):
     smoothed = white_noise.smooth(window_len=10)
     assert smoothed.shape == white_noise._sig.shape

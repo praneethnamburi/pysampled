@@ -1,6 +1,28 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.2.1]
+
+numpy 2.x compat hotfix following the 2026-05-12 internal audit
+(`pn-specs/plans/20260512_pysampled_audit.md`). Closes a residual
+vestige that 1.2.0's numpy-2 pass missed because no test exercised
+the `_butterfilt` NaN-replay branch. Downstream callers that
+routinely pass NaN-bearing signals through `Data.lowpass` /
+`Data.highpass` — `immersionToolbox.ot.Marker.velocity` (OptiTrack
+markers contain NaN when occluded) and `datanavigator.pointtracking`
+video-export paths (tracked points contain NaN where tracking
+failed) — would have crashed under numpy 2.x at the moment of the
+NaN re-apply.
+
+### Fixed
+- `pysampled.Data._butterfilt` now uses `np.nan` instead of `np.NaN`
+  to re-apply the NaN mask after the IIR filter step. numpy 2.0
+  removed the legacy `np.NaN` alias; only `np.nan` survives.
+- New regression test `test_butterfilt_preserves_nans_under_numpy2`
+  pins both 1D and 2D NaN-bearing signals through `lowpass` and
+  `highpass`, asserting that the NaN positions survive the filter
+  round trip.
+
 ## [1.2.0]
 
 Internal cleanup release. Restores CI compatibility against newer numpy and scipy, ships two internal refactors that close 1.1.3 audit blind spots (`_validate()`, `_clone_with_rate`), unifies the three `apply` variants on a single label-propagation rule, fixes `magnitude`'s long-standing global-vs-per-signal-name semantic mismatch, and adds two coarser-grained splits (`split_by_signal_name`, `split_by_signal_coord`). Matching `merge_along_*` classmethods were prototyped but pulled before release — the design needs more work and will be revisited in a future cycle. User-facing API decisions (mixed int/float slicing, `at_time` / `at_sample`, meta-vs-name precedence, magic `signal_coords=["x"]` default) are held for 1.3.0.
