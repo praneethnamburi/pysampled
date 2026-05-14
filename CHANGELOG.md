@@ -1,6 +1,26 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [Unpublished]
+
+Accumulating doc / robustness polish from the 2026-05-12 audit's
+follow-on list. No semver bump yet — items roll into 1.3.0 (or a
+1.2.2 patch) once that release is cut.
+
+### Fixed
+- `Data.diff()` now raises `ValueError` (instead of `IndexError`)
+  when called on a single-sample (or empty) signal. New regression
+  test pins both the 1D and 2D-with-explicit-axis cases. Closes
+  audit item E2.
+
+### Changed
+- `Data._butterfilt` no longer rebinds the local `self` to the
+  NaN-interpolated clone — it uses a `working` local instead.
+  Behavior-preserving readability cleanup; closes audit item S1.
+- `Data.__call__` docstring now flags the 1D special case
+  explicitly: for 1D signals there is no signal axis, so an integer
+  ``col`` is accepted but ignored. Closes audit item D1.
+
 ## [1.2.1]
 
 numpy 2.x compat hotfix following the 2026-05-12 internal audit

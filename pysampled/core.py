@@ -488,6 +488,10 @@ class Data:
     def __call__(self, col: Optional[Union[int, str]] = None) -> np.ndarray:
         """Return either a specific column or the entire set 2D signal.
 
+        For 1-D signals there is no signal axis, so an integer ``col``
+        is accepted but ignored — the full signal is returned regardless
+        of the index value.
+
         Examples:
             .. code-block:: python
 
@@ -712,17 +716,16 @@ class Data:
 
         nan_manip = False
         nan_bool = np.isnan(self._sig)
+        working = self
         if nan_bool.any():
             nan_manip = True
-            self = (
-                self.interpnan()
-            )  # interpolate missing values before applying an IIR filter
+            working = self.interpnan()  # interpolate missing values before applying an IIR filter
 
-        proc_sig = scipy.signal.filtfilt(b, a, self._sig, axis=self.axis)
+        proc_sig = scipy.signal.filtfilt(b, a, working._sig, axis=working.axis)
         if nan_manip:
             proc_sig[nan_bool] = np.nan  # put back the NaNs in the same place
 
-        return self._clone(
+        return working._clone(
             proc_sig,
             (
                 btype + "pass",
@@ -1483,7 +1486,16 @@ class Data:
         Returns:
             Data: The differentiated signal with the same number of samples as
             the input.
+
+        Raises:
+            ValueError: If the signal has fewer than 2 samples along the
+                sample axis.
         """
+        n_samples = self._sig.shape[self.axis]
+        if n_samples < 2:
+            raise ValueError(
+                f"Data.diff() requires at least 2 samples along the sample axis; got {n_samples}."
+            )
         if self._sig.ndim == 2:
             if self.axis == 1:
                 pp_value = (self._sig[:, 1] - self._sig[:, 0])[:, None]

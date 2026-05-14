@@ -546,6 +546,18 @@ def test_diff(white_noise):
     assert diffed._sig.shape == (1000,)
 
 
+def test_diff_rejects_single_sample():
+    """Data.diff() with <2 samples used to IndexError; now raises ValueError."""
+    one_sample_1d = Data(np.array([1.0]), sr=100)
+    with pytest.raises(ValueError, match="at least 2 samples"):
+        one_sample_1d.diff()
+
+    # 2D with explicit axis=0 (sample axis), 1 sample × 3 signals.
+    one_sample_2d = Data(np.array([[1.0, 2.0, 3.0]]), sr=100, axis=0)
+    with pytest.raises(ValueError, match="at least 2 samples"):
+        one_sample_2d.diff()
+
+
 def test_magnitude_per_signal_name_on_data_2d(data_2d):
     """1.2.0 behavior change: magnitude is per-signal_name. For data_2d with
     names=['acc1','acc2'] coords=['x','y','z'], output is (1000, 2) — the
