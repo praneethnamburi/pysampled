@@ -1,9 +1,7 @@
 # TODO
 
 Open design questions and deferred work for the 1.3.x cycle. Release
-narrative lives in `CHANGELOG.md`; portfolio-level roadmap lives in
-`C:/dev/pn-specs/ROADMAP.md`. Most recent audit:
-`C:/dev/pn-specs/plans/20260512_pysampled_audit.md` (2026-05-12).
+narrative lives in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Open design work
 
@@ -63,8 +61,7 @@ narrative lives in `CHANGELOG.md`; portfolio-level roadmap lives in
 
 ## From 2026-05-12 audit
 
-Findings from
-`C:/dev/pn-specs/plans/20260512_pysampled_audit.md`. Verdict: package
+Findings from a 2026-05-12 internal audit. Verdict: package
 structurally robust; everything below is folded into the 1.3.0 cycle
 unless explicitly flagged for 1.2.1.
 
