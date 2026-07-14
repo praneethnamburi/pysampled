@@ -1026,3 +1026,108 @@ def test_subset_then_bandpass(data_2d):
     assert sub.signal_names == ["acc1"]
     assert sub.signal_coords == ["x"]
     assert sub.n_signals() == 1
+
+
+# ---------------------------------------------------------------------------
+# merge_along_* classmethods (1.3.0) — inverses of the split_by_* family
+# ---------------------------------------------------------------------------
+
+
+def test_merge_along_signal_name_round_trip(data_2d):
+    parts = data_2d.split_by_signal_name()
+    assert len(parts) == 2
+    rebuilt = Data.merge_along_signal_name(parts)
+    assert np.allclose(rebuilt(), data_2d())
+    assert rebuilt.signal_names == data_2d.signal_names
+    assert rebuilt.signal_coords == data_2d.signal_coords
+
+
+def test_merge_along_signal_coord_round_trip(data_2d):
+    parts = data_2d.split_by_signal_coord()
+    assert len(parts) == 3
+    rebuilt = Data.merge_along_signal_coord(parts)
+    # column permutation must restore the exact names-outer / coords-inner order
+    assert np.allclose(rebuilt(), data_2d())
+    assert rebuilt.signal_names == data_2d.signal_names
+    assert rebuilt.signal_coords == data_2d.signal_coords
+
+
+def test_merge_along_time_contiguous():
+    sr = 100
+    sig = np.arange(20, dtype=float)
+    a = Data(sig[0:10], sr=sr, t0=0.0)
+    b = Data(sig[10:20], sr=sr, t0=10.0 / sr)  # starts one sample after a ends
+    merged = Data.merge_along_time([a, b])
+    assert len(merged) == 20
+    assert np.allclose(merged(), sig)
+
+
+def test_merge_along_time_trims_one_sample_overlap():
+    """The float-slice round-trip boundary: parts overlap by one sample; the
+    duplicated sample is dropped rather than rejected."""
+    sr = 100
+    sig = np.arange(20, dtype=float)
+    a = Data(sig[0:10], sr=sr, t0=0.0)
+    b = Data(sig[9:20], sr=sr, t0=9.0 / sr)  # b[0] == a[-1] (overlap by one)
+    merged = Data.merge_along_time([a, b])
+    assert len(merged) == 20
+    assert np.allclose(merged(), sig)
+
+
+def test_merge_along_time_rejects_gap():
+    sr = 100
+    a = Data(np.arange(10, dtype=float), sr=sr, t0=0.0)
+    b = Data(np.arange(10, dtype=float), sr=sr, t0=5.0)  # far-apart
+    with pytest.raises(ValueError, match="not contiguous"):
+        Data.merge_along_time([a, b])
+
+
+def test_merge_meta_keeps_agreeing_drops_conflicting():
+    sr = 100
+    a = Data(np.random.random((100, 3)), sr=sr, signal_names=["n"],
+             signal_coords=["x", "y", "z"], meta={"unit": "mV", "sensor": "A"})
+    b = Data(np.random.random((100, 3)), sr=sr, signal_names=["m"],
+             signal_coords=["x", "y", "z"], meta={"unit": "mV", "sensor": "B"})
+    with pytest.warns(UserWarning, match="sensor"):
+        merged = Data.merge_along_signal_name([a, b])
+    assert merged.meta == {"unit": "mV"}  # agreeing kept, conflicting dropped
+
+
+def test_merge_meta_override_wins_and_is_silent(recwarn):
+    sr = 100
+    a = Data(np.random.random((100, 3)), sr=sr, signal_names=["n"],
+             signal_coords=["x", "y", "z"], meta={"sensor": "A"})
+    b = Data(np.random.random((100, 3)), sr=sr, signal_names=["m"],
+             signal_coords=["x", "y", "z"], meta={"sensor": "B"})
+    merged = Data.merge_along_signal_name([a, b], meta={"sensors": ["A", "B"]})
+    assert merged.meta == {"sensors": ["A", "B"]}
+    assert len(recwarn) == 0  # override path does not warn
+
+
+def test_merge_tolerates_t0_float_drift():
+    sr = 100
+    a = Data(np.random.random((100, 3)), sr=sr, signal_names=["a"],
+             signal_coords=["x", "y", "z"], t0=0.0)
+    b = Data(np.random.random((100, 3)), sr=sr, signal_names=["b"],
+             signal_coords=["x", "y", "z"], t0=1e-9)  # within 1/sr
+    merged = Data.merge_along_signal_name([a, b])  # must not raise
+    assert merged.signal_names == ["a", "b"]
+
+
+def test_merge_rejects_coord_mismatch():
+    a = Data(np.random.random((100, 3)), sr=100, signal_names=["a"], signal_coords=["x", "y", "z"])
+    b = Data(np.random.random((100, 2)), sr=100, signal_names=["b"], signal_coords=["x", "y"])
+    with pytest.raises(ValueError, match="signal_coords mismatch"):
+        Data.merge_along_signal_name([a, b])
+
+
+def test_merge_empty_raises():
+    with pytest.raises(ValueError, match="at least one"):
+        Data.merge_along_signal_name([])
+
+
+def test_merge_along_signal_name_rejects_1d():
+    a = Data(np.arange(10.0), sr=100)
+    b = Data(np.arange(10.0), sr=100)
+    with pytest.raises(ValueError, match="2D"):
+        Data.merge_along_signal_name([a, b])

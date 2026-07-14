@@ -1,25 +1,23 @@
 # TODO
 
-Open design questions and deferred work for the 1.3.x cycle. Release
+Open design questions and deferred work for the 1.4.x cycle. Release
 narrative lives in [`CHANGELOG.md`](CHANGELOG.md).
 
-## Open design work
+## Shipped
 
-- **Merge classmethods (deferred from 1.2.0).** Initial
+- ✅ **Merge classmethods — shipped in 1.3.0 (2026-07-14).**
   `merge_along_signal_name` / `merge_along_signal_coord` /
-  `merge_along_time` prototypes were pulled before release; the
-  design needs more work before re-landing. Open questions to
-  discuss collaboratively: meta-merge collision rule (last-wins
-  was the prototype, but probably wrong); history representation
-  (the prototype's `parts_history_tails` is awkward); contiguity
-  tolerance for time merges (strict-by-default rejects float-slice
-  round trips that overlap by one sample at the boundary —
-  surprising); whether to support overlap / gap / resampling-on-merge
-  variants; whether the API should be classmethods or module-level
-  functions or instance methods. No timeline; revisit when the use
-  case is concrete.
+  `merge_along_time` re-landed as classmethods, refining the pulled 1.2.0
+  prototype against delsys's `_aggregate_bundles` as the concrete use case.
+  Resolved: meta-merge = keep-agreeing / drop-conflicting-with-`UserWarning`
+  (never last-wins) + a `meta=` override; history = flat `{"n_parts": N}`
+  (dropped the awkward `parts_history_tails`); time-merge accepts the
+  one-sample float-slice overlap (trims the dup) and rejects larger
+  gaps/overlaps; same-rate only (rate reconciliation stays a caller policy);
+  no dunder shorthand. Overlap-add / gap-fill / resampling-on-merge variants
+  remain deferred (no consumer).
 
-## Suspected bugs / contract holes (1.3.0)
+## Suspected bugs / contract holes (1.4.0)
 
 - **Mixed int/float slicing silently flips conventions.** `s[0:5.]`
   treats the int `0` as time `0.0`, not sample `0`.
@@ -42,14 +40,14 @@ narrative lives in [`CHANGELOG.md`](CHANGELOG.md).
   picks up a coord named `"x"` regardless of meaning, which surfaces
   in expressions like `data_1d["x"]` returning the whole signal.
   Consider `signal_coords=[None]` (or `[""]`) for the unlabelled
-  case. Needs a deprecation pathway: warn in 1.3.0, swap default in
-  1.4.0.
+  case. Needs a deprecation pathway: warn in 1.4.0, swap default in
+  1.5.0.
 - **String-key namespace overlap.** What if `signal_names` and
   `signal_coords` share a label (e.g. both contain `"x"`)? Today
   coords win; mixed lists like `["x", "acc1"]` raise `KeyError` even
   though both are individually valid. Pairs with `_resolve_str_key`.
 
-## Refactor opportunities (1.3.0)
+## Refactor opportunities (1.4.0)
 
 - **Consolidate string-key dispatch (`_resolve_str_key`).** Meta
   lookup, signal-name lookup, and coord lookup are three separate

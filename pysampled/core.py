@@ -1,5 +1,6 @@
 import inspect
 import itertools
+import warnings
 
 import numpy as np
 import scipy.fft
@@ -1238,6 +1239,205 @@ class Data:
         if self().ndim == 1:
             return 1
         return self().shape[self.get_signal_axis()]
+
+    # ------------------------------------------------------------------
+    # Merge classmethods — inverses of the split_by_* family. Same-rate /
+    # same-grid parts only (rate reconciliation is a caller policy).
+    # Classmethods, no dunder shorthand (`+` stays arithmetic). See TODO.
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _check_merge_invariants(
+        cls, parts: List["Data"], exact_attrs: List[str], *, check_t0: bool
+    ) -> "Data":
+        """Shared validation for the ``merge_along_*`` classmethods.
+
+        ``exact_attrs`` must match exactly across all parts; ``sr`` is always
+        compared with a small relative tolerance and ``t0`` (when ``check_t0``)
+        within one sample — both absorb the float drift that resampling leaves,
+        so real multi-sensor bundles aren't rejected by an exact ``!=``. Returns
+        ``parts[0]`` for convenience.
+        """
+        if not parts:
+            raise ValueError("merge requires at least one Data part")
+        head = parts[0]
+        t0_atol = 1.0 / head.sr
+        for p in parts[1:]:
+            for attr in exact_attrs:
+                if getattr(p, attr) != getattr(head, attr):
+                    raise ValueError(
+                        f"merge: {attr} mismatch ({getattr(p, attr)!r} vs {getattr(head, attr)!r})"
+                    )
+            if not np.isclose(p.sr, head.sr, rtol=1e-9, atol=0.0):
+                raise ValueError(f"merge: sr mismatch ({p.sr!r} vs {head.sr!r})")
+            if check_t0 and abs(p._t0 - head._t0) > t0_atol:
+                raise ValueError(
+                    f"merge: t0 mismatch ({p._t0!r} vs {head._t0!r}; tol {t0_atol:g})"
+                )
+        return head
+
+    @staticmethod
+    def _merge_meta(parts: List["Data"], override: Optional[dict]) -> dict:
+        """Combine parts' ``meta`` for a merge result.
+
+        ``override`` (when given) becomes the result meta verbatim — the escape
+        hatch for callers needing a custom reduction (e.g. delsys collapsing
+        per-sensor ``meta['sensor']`` into a plural ``meta['sensors']``).
+        Otherwise: keep only keys present **and** equal across every part; keys
+        missing in some part or conflicting are dropped with a ``UserWarning``
+        naming them (never last-wins — that silently loses data).
+        """
+        if override is not None:
+            return dict(override)
+        if not parts:
+            return {}
+        common = set(parts[0].meta)
+        for p in parts[1:]:
+            common &= set(p.meta)
+
+        def _eq(a: Any, b: Any) -> bool:
+            try:
+                r = a == b
+                return bool(r.all()) if isinstance(r, np.ndarray) else bool(r)
+            except Exception:  # noqa: BLE001 — uncomparable meta values
+                return a is b
+
+        out: dict = {}
+        conflict: List[str] = []
+        for k in common:
+            v0 = parts[0].meta[k]
+            if all(_eq(p.meta[k], v0) for p in parts[1:]):
+                out[k] = v0
+            else:
+                conflict.append(k)
+        all_keys = set().union(*(set(p.meta) for p in parts))
+        dropped = sorted(conflict) + sorted(all_keys - common)
+        if dropped:
+            warnings.warn(
+                f"merge: dropped non-agreeing meta keys {dropped}; pass meta= to "
+                "control the merged metadata.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return out
+
+    @classmethod
+    def merge_along_signal_name(
+        cls, parts: List["Data"], *, meta: Optional[dict] = None
+    ) -> "Data":
+        """Inverse of :py:meth:`split_by_signal_name`: concatenate ``parts`` along
+        the signal axis, chaining their ``signal_names``.
+
+        Every part must be 2D and agree on ``signal_coords``, ``axis``, time
+        length, ``sr`` (relative tol), and ``t0`` (within one sample). ``meta``
+        follows :py:meth:`_merge_meta`.
+        """
+        head = cls._check_merge_invariants(parts, ["axis", "signal_coords"], check_t0=True)
+        signal_axis = head.get_signal_axis()
+        if signal_axis is None:
+            raise ValueError(
+                "merge_along_signal_name needs 2D parts (a 1D signal has no signal axis)"
+            )
+        for p in parts[1:]:
+            if len(p) != len(head):
+                raise ValueError(f"merge: time-length mismatch ({len(p)} vs {len(head)})")
+        proc_sig = np.concatenate([p._sig for p in parts], axis=signal_axis)
+        new_names = list(itertools.chain.from_iterable(p.signal_names for p in parts))
+        return cls(
+            proc_sig,
+            sr=head.sr,
+            axis=head.axis,
+            history=[("merge_along_signal_name", {"n_parts": len(parts)})],
+            t0=head._t0,
+            meta=cls._merge_meta(parts, meta),
+            signal_names=new_names,
+            signal_coords=list(head.signal_coords),
+        )
+
+    @classmethod
+    def merge_along_signal_coord(
+        cls, parts: List["Data"], *, meta: Optional[dict] = None
+    ) -> "Data":
+        """Inverse of :py:meth:`split_by_signal_coord`: concatenate ``parts`` along
+        the signal axis, chaining their ``signal_coords`` and reordering columns
+        back to the names-outer / coords-inner invariant.
+
+        Every part must be 2D and agree on ``signal_names``, ``axis``, time
+        length, ``sr`` (relative tol), and ``t0`` (within one sample).
+        """
+        head = cls._check_merge_invariants(parts, ["axis", "signal_names"], check_t0=True)
+        signal_axis = head.get_signal_axis()
+        if signal_axis is None:
+            raise ValueError(
+                "merge_along_signal_coord needs 2D parts (a 1D signal has no signal axis)"
+            )
+        for p in parts[1:]:
+            if len(p) != len(head):
+                raise ValueError(f"merge: time-length mismatch ({len(p)} vs {len(head)})")
+        new_names = list(head.signal_names)
+        new_coords = list(itertools.chain.from_iterable(p.signal_coords for p in parts))
+        # Naive concat = parts' (name, coord) product orders end-to-end; permute
+        # to the canonical names-outer / coords-inner column order.
+        source_pairs: List[Tuple[str, str]] = []
+        for p in parts:
+            source_pairs.extend(itertools.product(p.signal_names, p.signal_coords))
+        target_pairs = list(itertools.product(new_names, new_coords))
+        perm = np.array([source_pairs.index(pair) for pair in target_pairs])
+        concat = np.concatenate([p._sig for p in parts], axis=signal_axis)
+        slc: List[Any] = [slice(None)] * concat.ndim
+        slc[signal_axis] = perm
+        return cls(
+            concat[tuple(slc)],
+            sr=head.sr,
+            axis=head.axis,
+            history=[("merge_along_signal_coord", {"n_parts": len(parts)})],
+            t0=head._t0,
+            meta=cls._merge_meta(parts, meta),
+            signal_names=new_names,
+            signal_coords=new_coords,
+        )
+
+    @classmethod
+    def merge_along_time(
+        cls, parts: List["Data"], *, meta: Optional[dict] = None
+    ) -> "Data":
+        """Concatenate ``parts`` along the time axis (1D or 2D).
+
+        Every part must agree on ``signal_names``, ``signal_coords``, ``axis``,
+        and ``sr``. Consecutive parts must be contiguous within tolerance: a gap
+        of one sample (``1/sr``) is the normal contiguous case; a **one-sample
+        overlap** (gap ≈ 0) — which float-slice round trips like ``s[10.:20.]`` /
+        ``s[20.:30.]`` produce at the boundary — is accepted by dropping the
+        duplicated sample. Larger gaps or overlaps raise.
+        """
+        head = cls._check_merge_invariants(
+            parts, ["axis", "signal_names", "signal_coords"], check_t0=False
+        )
+        dt = 1.0 / head.sr
+        sigs = [parts[0]._sig]
+        for prev, nxt in zip(parts, parts[1:]):
+            gap = nxt._t0 - prev.t_end()
+            if abs(gap - dt) <= 0.5 * dt:  # contiguous
+                sigs.append(nxt._sig)
+            elif abs(gap) <= 0.5 * dt:  # one-sample overlap -> trim the duplicate
+                slc: List[Any] = [slice(None)] * nxt._sig.ndim
+                slc[head.axis] = slice(1, None)
+                sigs.append(nxt._sig[tuple(slc)])
+            else:
+                raise ValueError(
+                    f"merge_along_time: parts not contiguous near t={prev.t_end():g}s "
+                    f"(gap {gap:g}s; expected ~{dt:g}s contiguous or ~0 one-sample overlap)."
+                )
+        return cls(
+            np.concatenate(sigs, axis=head.axis),
+            sr=head.sr,
+            axis=head.axis,
+            history=[("merge_along_time", {"n_parts": len(parts)})],
+            t0=parts[0]._t0,
+            meta=cls._merge_meta(parts, meta),
+            signal_names=list(head.signal_names),
+            signal_coords=list(head.signal_coords),
+        )
 
     def split_by_signal_name(self) -> List["Data"]:
         """Split into one `Data` per `signal_name`. Equivalent to

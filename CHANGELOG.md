@@ -3,9 +3,35 @@ All notable changes to this project will be documented in this file.
 
 ## [Unpublished]
 
-Accumulating doc / robustness polish from the 2026-05-12 audit's
-follow-on list. No semver bump yet — items roll into 1.3.0 (or a
-1.2.2 patch) once that release is cut.
+## [1.3.0] - 2026-07-14
+
+Adds the `merge_along_*` classmethods (the inverses of the `split_by_*`
+family, prototyped for 1.2.0 and pulled) plus the accumulated doc /
+robustness polish from the 2026-05-12 audit's follow-on list. The larger
+user-facing API-contract work (int-vs-float slicing tightening,
+`at_time`/`at_sample`, `_resolve_str_key`, the bracket-meta and
+`signal_coords=["x"]` deprecations, `DataList`/`Event`/`Events` removal)
+is **decoupled to 1.4.0** — it is breaking and needs its own design pass,
+and shouldn't gate downstream consumers of the additive merge feature
+(delsys's `_aggregate_bundles`).
+
+### Added
+- **`Data.merge_along_signal_name` / `merge_along_signal_coord` /
+  `merge_along_time`** classmethods — concatenate a list of `Data` back
+  into one, the inverses of `split_by_signal_name` / `split_by_signal_coord`
+  (and a time-axis join). Same-rate / same-grid parts only; rate
+  reconciliation is left to the caller (a deliberate lean-foundation
+  choice). `signal_name`/`coord` merges require agreement on the other
+  axis label, `axis`, time length, `sr` (relative tol), and `t0` (within
+  one sample); `merge_along_signal_coord` permutes columns back to the
+  names-outer / coords-inner invariant; `merge_along_time` requires
+  contiguity within tolerance, accepting the one-sample overlap that
+  float-slice round trips (`s[10.:20.]`/`s[20.:30.]`) produce at the
+  boundary by dropping the duplicated sample. `meta` on the result keeps
+  only keys present-and-equal across all parts (conflicting/missing keys
+  dropped with a `UserWarning` — never last-wins); pass `meta=` to
+  override with a custom reduction. Classmethods only — no dunder
+  shorthand (`+` stays arithmetic).
 
 ### Fixed
 - `Data.diff()` now raises `ValueError` (instead of `IndexError`)
